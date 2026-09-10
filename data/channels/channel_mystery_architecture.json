@@ -1,0 +1,100 @@
+{
+  "channel_id": "channel_mystery_architecture",
+  "topic": "신비한 건축사전 — 도시공학 & 메가 건축의 숨겨진 진실",
+  "lang": "ko",
+  "audio_lang": "ko",
+  "audience": "건축, 도시공학, 지식 다큐멘터리에 관심 있는 20~50대 교양 시청자",
+  "tone": "차분하고 전문적인",
+  "persona_type": "character",
+  "channel_name": "신비한 건축사전",
+  "handles": [
+    {
+      "handle": "archimystery",
+      "available": true,
+      "message": "사용 가능한 핸들입니다.",
+      "url": "https://www.youtube.com/@archimystery"
+    },
+    {
+      "handle": "mysterybuild",
+      "available": true,
+      "message": "사용 가능한 핸들입니다.",
+      "url": "https://www.youtube.com/@mysterybuild"
+    },
+    {
+      "handle": "archilab_kr",
+      "available": true,
+      "message": "사용 가능한 핸들입니다.",
+      "url": "https://www.youtube.com/@archilab_kr"
+    }
+  ],
+  "description": "세상을 바꾼 거대한 건축물과 숨겨진 도시공학의 미스터리를 파헤칩니다.\n\n매주 우리가 무심코 지나쳤던 쓰레기산, 지하 벙커, 거대 교량 속 치열한 공학적 해법과 인간의 도전 이야기를 흥미진진한 3D 디오라마로 전달합니다.\n\n비즈니스/협업 문의: contact@archimystery.lab\n구독과 좋아요로 지식의 깊이를 더해보세요.",
+  "avatar_prompt": "A cute yet intelligent 3D miniature architect character wearing white protective construction gear and glasses, holding a red blueprint roll. Soft studio clay style, clean light background, isometric 1:1, centered hero composition.",
+  "banner_prompt": "A wide 16:9 panoramic 3D diorama cutaway view of an ultra-modern city and underground infrastructure, matte materials, soft isometric lighting, red engineering diagram overlay lines with leader notes, ultra-detailed architectural showcase, no text.",
+  "category_id": 28,
+  "channel_keywords": [
+    "건축",
+    "도시공학",
+    "토목",
+    "지식다큐",
+    "미니어처",
+    "하늘공원",
+    "신비한건축사전",
+    "과학기술"
+  ],
+  "upload_defaults": {
+    "title_template": "[신비한 건축사전] {주제}: 숨겨진 공학의 반전",
+    "description_template": "우리가 몰랐던 건축과 도시의 진짜 이야기.\n\n타임라인:\n00:00 도입\n01:00 갈등\n02:30 난제\n04:00 반전\n05:30 여운\n\n#건축 #도시공학 #다큐멘터리",
+    "tags": [
+      "건축",
+      "도시공학",
+      "토목공학",
+      "지식쇼츠",
+      "다큐"
+    ],
+    "category_id": 28,
+    "privacy_status": "private"
+  },
+  "setup_steps": [
+    {
+      "step": 1,
+      "task": "YouTube Studio 접속 후 새 채널 생성",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "task": "핸들 @archimystery 등록",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "task": "프로필 이미지 및 배너 등록",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "task": "채널 설명 및 키워드 등록",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "task": "업로드 기본값 및 카테고리(과학기술 28) 세팅",
+      "status": "pending"
+    },
+    {
+      "step": 6,
+      "task": "휴대전화 인증(중급 기능 활성화 - 15분 이상 영상, 썸네일 등록)",
+      "status": "pending"
+    },
+    {
+      "step": 7,
+      "task": "고급 기능 활성화(신분증 인증 또는 채널 활동 이력)",
+      "status": "pending"
+    },
+    {
+      "step": 8,
+      "task": "첫 번째 8초 씬 지식 다큐 영상 업로드",
+      "status": "pending"
+    }
+  ],
+  "created_at": 1788788363.025913
+}

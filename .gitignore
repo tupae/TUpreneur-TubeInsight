@@ -1,0 +1,33 @@
+# 환경 변수 및 보안
+.env
+.env*
+!.env.example
+
+# 가상환경 및 캐시
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# 생성 데이터 및 미디어 캐시
+audio/
+output/
+data/audio/
+data/voices/
+data/plans/
+data/renders/
+data/marketing/
+data/analyses/*
+!data/analyses/ws1Clj0vOAM.json
+!data/analyses/dQw4w9WgXcQ.json
+settings.json
+data/settings.json
+
+# 임시 다운로드 자막 및 리포트 파일
+*.vtt
+ws1Clj0vOAM*
+
+# 유튜브 OAuth 인증 및 개인 토큰 보안
+data/youtube/*.json
+client_secret*.json
+token*.json
