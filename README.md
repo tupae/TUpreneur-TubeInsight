@@ -1,99 +1,140 @@
-# TubeInsight — 유튜브 벤치마킹 분석 → 8초 씬 기획 → 영상 제작·업로드
+# TubeInsight — 유튜브 채널 기획 · 영상 분석 · 8초 씬 기획 · 영상 자동 제작 · 멀티채널 마케팅 자동화 (v0.4.0)
 
-유튜브 링크 하나로 **자막 · 댓글 · 메타데이터**를 모아 내 컴퓨터의 로컬 AI(LM Studio / Ollama)가 흥행 공식을 분석하고, 그 공식을 적용해 새 주제의 **제목 · 설명란 · 8초 씬별 나레이션 · AI 영상 프롬프트 · 썸네일 이미지 프롬프트 · 나레이션 음성**을 만듭니다. 씬 이미지를 넣으면 **완성 영상(mp4)** 을 합성하고 **유튜브에 바로 업로드**할 수 있습니다.
+> **"유튜브 링크 하나로 채널 브랜딩부터 8초 씬 영상 제작, Threads · X(Twitter) · SEO 블로그 · 뉴스레터까지 원클릭 자동화"**
 
-| 단계 | 하는 일 | 필요한 것 |
-|---|---|---|
-| ① 영상 분석 | 훅 구조·5단계 전개·핵심 메시지·댓글 여론·적용 플레이북 | 로컬 AI (무료) |
-| ② 기획 · 나레이션 | 제목 3종, 설명란, 8초 씬 대본, Runway/Kling 프롬프트, 나노바나나 레드라인 이미지 프롬프트, 씬별 MP3 | 로컬 AI + 인터넷(Edge-TTS) |
-| ③ 제작 · 업로드 | 이미지/클립 + 나레이션 + 자막 → mp4, 유튜브 업로드 | ffmpeg(자동 포함) · 선택: Gemini API 키, 유튜브 OAuth |
-| ④ 마케팅 & SNS | 영상 하나로 Threads/X 타래 · SEO 블로그 · 이메일 뉴스레터 3종 자동 생성 (원소스 멀티유즈) | 로컬 AI (무료) |
-
-> 이 도구는 **개인 학습·기획 보조용**입니다. 유튜브 데이터 수집(yt-dlp)과 Edge-TTS는 각 서비스의 약관을 확인하고 본인 책임으로 사용하세요.
+TubeInsight는 로컬 AI(LM Studio / Ollama)와 클라우드 API를 결합하여 1인 크리에이터 및 마케터를 위해 개발된 올인원 영상 기획·제작·마케팅 자동화 시스템입니다.
 
 ---
 
-## 1. 설치
+## 🚀 파이프라인 단계별 개요
 
-**준비물**: Python **3.10 이상**(Omni 영상 생성용 `google-genai` 2.x 요구), 그리고 LM Studio **또는** Ollama 중 하나.
+| 단계 | 탭 명칭 | 주요 기능 | 주요 기술 / 도구 |
+|---|---|---|---|
+| **00** | **채널 세팅** | 채널 컨셉·페르소나·콘텐츠 필러·채널명/바이오 기획 및 관리 | 로컬 AI (LM Studio / Ollama) |
+| **01** | **영상 분석** | 벤치마킹 유튜브 영상 분석 (자막·댓글·후킹 공식·타임라인 추출) | `yt-dlp` + 로컬 AI |
+| **02** | **기획 · 나레이션** | 8초 씬별 대본, AI 영상/이미지 프롬프트, 씬별 음성(MP3) 자동 합성 | 로컬 AI + Edge-TTS / Qwen Voice Clone |
+| **03** | **제작 · 업로드** | 이미지·클립 합성, 자막 렌더링, 오디오 덕킹 영상(MP4) 생성 및 유튜브 업로드 | `ffmpeg` + Gemini API + YouTube Data API v3 |
+| **04** | **마케팅 & SNS** | One-Source Multi-Use: Threads 타래, X(Twitter) 타래, SEO 장문 블로그, 반응형 HTML 뉴스레터 | Threads Graph API, X API v2 & 무료 웹인텐트 |
 
-> 맥의 기본 Python이 3.9라면 [uv](https://docs.astral.sh/uv/)로 프로젝트 전용 환경을 만드는 게 가장 쉽습니다:
-> ```bash
-> uv venv --python 3.11 .venv && uv pip install --python .venv/bin/python -r requirements.txt
-> ```
-> 이후 `run.command`(mac) / `run.bat`(Windows)가 `.venv`를 자동으로 사용합니다.
+---
 
+## 🛠️ 주요 기능 상세
+
+### 1. 🎯 00 채널 세팅 (Channel Builder)
+* 유튜브 채널의 핵심 정체성(Identity), 목표 타깃 페르소나, 3대 콘텐츠 기둥(Pillar) 수립.
+* 클릭률을 높이는 채널명 3종, 핸들(@), 소개 바이오(Bio), 시청자 웰컴 메시지 자동 생성 및 저장 관리.
+
+### 2. 📊 01 영상 분석 (Video Analyzer)
+* 유튜브 URL 입력 시 자막, 메타데이터, 댓글 여론을 즉시 크롤링 및 분석.
+* 5단계 스토리 전개 구조, 초반 3초 후킹 공식, 시청 지속 요인 분석 리포트 제공.
+* 분석 데이터 로컬 캐싱(`data/analyses/`)으로 재사용 지원.
+
+### 3. 🎬 02 기획 · 나레이션 (Scene Generator)
+* 벤치마킹 분석을 적용한 신규 주제 8초 씬(Scene) 단위 영상 기획서 자동 작성.
+* 씬별 나레이션 글자 수·시간(초) 모니터링 및 8초 초과 시 자동 경고.
+* Runway, Kling, Luma 등 AI 비디오 프롬프트 및 나노바나나(NanoBanana) 레드라인 이미지 프롬프트 생성.
+* Edge-TTS 및 Qwen 보이스 클로닝 음성 합성 지원.
+
+### 4. 🎞️ 03 제작 · 업로드 (Video Producer & Uploader)
+* 씬별 이미지/비디오 클립 + 나레이션 오디오 + 외곽선 한글 자막 자동 합성 (`ffmpeg`).
+* AI 영상의 배경음/효과음을 살려주는 나레이션 자동 오디오 덕킹(Audio Ducking) 처리.
+* YouTube Data API v3를 통한 원클릭 유튜브 업로드.
+
+### 5. 🌐 04 마케팅 & SNS (Omni Marketing Hub)
+* **𝕏 (Twitter) 특화 바이럴 타래**:
+  * 알고리즘 최적화: 초단문 60~120자, 외부링크 본문 제외, 질문 댓글(Replies) 인게이지먼트 극대화.
+  * **X 공식 API v2 연동**: 1/N ~ N/N 순차 체이닝(in_reply_to_tweet_id) 연속 발행.
+  * **100% 무료 웹인텐트 도우미**: 종량제 크레딧 결제 없이 공식 X 작성창의 `[+]` 타래 엮기 기능을 활용하여 비용 0원으로 5단 타래를 1분 만에 완성.
+* **🧵 Threads 특화 바이럴 타래**:
+  * 알고리즘 최적화: 100~200자 모바일 가독성, 이모지 2~3개 절제, 긍정 톤앤매너(-58% 노출 페널티 차단).
+  * **Meta Threads 공식 API 연동**: 원클릭 연속 타래 체이닝 발행.
+* **📝 SEO 블로그 라이터**:
+  * 4대 플랫폼 맞춤: 네이버 블로그(친근한 대화체/C-Rank), 구글 표준 SEO, 티스토리/워드프레스(HTML 시맨틱), 미디엄/벨로그(기술 인사이트).
+* **✉️ 반응형 HTML 뉴스레터**:
+  * A/B 테스트용 고전환 이메일 제목 5선 (오픈율 극대화).
+  * 모바일/PC 반응형 인라인 CSS HTML 템플릿 실시간 렌더링 및 다운로드.
+
+---
+
+## 📂 프로젝트 폴더 구조
+
+```
+TubeInsight/
+├── server.py               # 메인 백엔드 웹 서버 (FastAPI/Uvicorn, 포트 8989)
+├── llm_client.py           # 로컬 LLM (LM Studio / Ollama) 통신 클라이언트
+├── channel_builder.py      # [00 채널 세팅] 채널 브랜딩 기획 모듈
+├── analyze.py              # [01 영상 분석] 유튜브 데이터 수집 (yt-dlp) & AI 분석
+├── generator.py            # [02 기획·나레이션] 8초 씬별 대본 및 프롬프트 기획
+├── tts_engine.py           # 나레이션 음성 합성 엔진 (Edge-TTS / Qwen-TTS)
+├── producer.py             # [03 제작] ffmpeg 영상 합성 & Gemini 이미지 생성
+├── uploader.py             # [03 업로드] YouTube Data API v3 업로더
+├── marketing.py            # [04 마케팅] Threads·X·블로그·뉴스레터 생성 엔진
+├── threads_client.py       # Meta Threads 공식 Graph API 연동 클라이언트
+├── twitter_client.py       # X(Twitter) 공식 API v2 연동 클라이언트
+├── index.html              # 프론트엔드 메인 UI
+├── app.js                  # 프론트엔드 비즈니스 로직 및 인터랙션
+├── style.css               # 커스텀 스타일시트
+├── requirements.txt        # Python 의존성 목록
+├── run.command / run.bat   # macOS / Windows 간편 실행 스크립트
+├── .env.example            # 환경 변수 설정 템플릿
+├── X 트위트 API.md          # X Developer Portal 5단계 토큰 발급 가이드
+├── Thread API.md           # Meta Threads 토큰 발급 가이드
+├── vendor/                 # 오프라인 로컬 JS 라이브러리 (Lucide, Tailwind 등)
+└── data/                   # 데이터 저장소 (.gitignore 적용)
+    ├── analyses/           # 영상 분석 결과 JSON 및 리포트
+    ├── channels/           # 기획된 채널 프로필 데이터
+    ├── plans/              # 8초 씬 영상 기획서 JSON/MD
+    ├── audio/              # 생성된 나레이션 MP3
+    ├── renders/            # 완성된 영상 MP4 및 렌더링 소스
+    ├── marketing/          # 마케팅 타래 및 블로그 생성 보관함
+    └── youtube/            # YouTube OAuth 인증 파일
+```
+
+---
+
+## ⚙️ 빠른 시작 가이드
+
+### 1. 환경 요구사항
+* **Python 3.10 이상** (3.11 권장)
+* **로컬 LLM (둘 중 하나 실행)**:
+  * **LM Studio** (포트 `1234`): 한국어 지원 모델 (예: `gemma-2-9b-it`, `qwen2.5-7b-instruct` 등) 로드 후 로컬 서버 Start
+  * **Ollama** (포트 `11434`): `ollama run gemma3` 또는 `ollama run qwen2.5:7b`
+
+### 2. 설치
 ```bash
-pip3 install -r requirements.txt
+# 가상환경 생성 및 의존성 설치
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-**로컬 AI 설정 (둘 중 하나)**
-- **LM Studio** (https://lmstudio.ai): 한국어 잘하는 모델(예: `google/gemma-3-12b`)을 받고 *Developer → Local Server* 에서 **Start** (포트 1234)
-- **Ollama** (https://ollama.com): 설치 후 `ollama pull gemma3` (또는 `gemma3:12b`)
-
-앱이 LM Studio(1234) → Ollama(11434) 순으로 자동 감지합니다. 상단 배지를 클릭하면 직접 고를 수 있고, 선택은 재시작 후에도 유지됩니다.
-
-## 2. 실행
-
+### 3. 환경 변수 설정
 ```bash
-.venv/bin/python server.py   # 또는 run.command (mac) / run.bat (Windows) 더블클릭
+cp .env.example .env
 ```
+필요에 따라 `.env` 파일에 API 키를 설정합니다 (기본 무료 로컬 AI 및 무료 X 웹인텐트 기능은 API 키 없이도 즉시 동작합니다):
+* `GEMINI_API_KEY`: 클라우드 AI 이미지 생성 (선택)
+* `THREADS_USER_ID` / `THREADS_ACCESS_TOKEN`: Threads 자동 포스팅 (선택)
+* `TWITTER_API_KEY` ~ `TWITTER_ACCESS_TOKEN`: X API v2 자동 포스팅 (선택, 종량제 크레딧 필요)
 
-브라우저에서 **http://localhost:8989** 를 엽니다. 서버는 내 컴퓨터(127.0.0.1)에서만 접속됩니다.
+### 4. 실행
+```bash
+# 터미널 실행
+python server.py
 
-## 3. 사용 흐름
-
-1. **① 영상 분석** — 벤치마크할 링크를 넣고 "분석 시작". 실제 진행률이 표시되고, 결과는 `data/analyses/`에 저장되어 다음부터 바로 열립니다. 새로 분석하려면 "캐시 무시" 체크.
-2. **② 기획 · 나레이션** — 주제를 입력하고 벤치마크 영상(①에서 분석한 것), 비율(16:9 / 9:16), 씬 개수, 나레이션 음성을 고른 뒤 "기획 시작". 씬마다 나레이션 길이(자·초)가 표시되고 8초를 넘으면 경고합니다.
-   - 씬 카드의 **✏️ 나레이션 수정**으로 오타를 고치면 그 기획서의 나레이션 오디오·대본 문서가 함께 다시 만들어집니다. 생성 시에는 AI가 오타·맞춤법을 한 번 자동 교정합니다(교정된 씬에 "교정됨" 표시).
-3. **③ 제작 · 업로드** — 기획서를 고르고 **원클릭 영상 완성**을 누르면 ②의 이미지 프롬프트로 첫 프레임 이미지(나노바나나) → (선택) 영상 프롬프트로 Omni 1.1 Flash 영상 → ②의 나레이션 + 자막 합성까지 기획서 비율(16:9 / 9:16) 그대로 자동 진행됩니다. 씬마다 이미지나 직접 만든 클립을 끌어다 놓아도 됩니다. Gemini API 키가 있으면 레드라인 프롬프트로 이미지를 자동 생성합니다. "영상 만들기"로 mp4를 만들고, 유튜브 계정을 연결해 업로드합니다.
-
-**합성 품질**: 자막은 하단 반투명 밴드 + 외곽선·그림자 스타일로 굽고(씬 전환 중 겹치지 않음), 씬 사이는 0.5초 크로스페이드, 처음·끝 페이드. AI 영상 클립의 효과음·배경음은 버리지 않고 나레이션이 나올 때 자동으로 작아지도록(덕킹) 섞습니다.
-
-4. **④ 마케팅 & SNS** — "분석 영상 가져오기" 또는 "기획 대본 가져오기"로 재료를 연동한 뒤 "원클릭 전채널 올인원 생성"을 누르면 스레드 타래·SEO 블로그·뉴스레터가 한 번에 만들어집니다(무료). 결과는 보관함에 자동 저장됩니다.
-
-상단의 청진기 아이콘(환경 진단)에서 각 구성 요소 상태와 해결 방법을 확인할 수 있습니다.
-
-## 4. 유튜브 업로드 준비 (1회)
-
-1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트 생성 → **YouTube Data API v3** 사용 설정
-2. OAuth 동의 화면(외부·테스트) 생성 → 테스트 사용자에 내 구글 계정 추가
-3. 사용자 인증 정보 → OAuth 클라이언트 ID → **데스크톱 앱** → JSON 다운로드
-4. 파일을 `data/youtube/client_secret.json` 으로 저장 → ③ 탭 "유튜브 계정 연결"
-
-앱이 구글 검증을 받기 전에는 공개 업로드가 비공개로 잠길 수 있습니다. **비공개로 올린 뒤 유튜브 스튜디오에서 공개**하는 것을 권장합니다. API 할당량상 하루 약 6개까지 업로드됩니다.
-
-## 5. 폴더 구조
-
+# 또는 간편 실행
+# macOS: run.command 더블클릭
+# Windows: run.bat 더블클릭
 ```
-server.py         웹 서버 · 백그라운드 작업 관리 (실행 진입점)
-llm_client.py     LM Studio / Ollama 클라이언트 (JSON 모드, 컨텍스트 확장)
-analyze.py        유튜브 수집(yt-dlp 라이브러리) + AI 분석 + 대시보드 요약
-generator.py      8초 씬 기획 (제목·대본·영상 프롬프트·레드라인 이미지 프롬프트)
-tts_engine.py     나레이션 합성 (Edge-TTS / Qwen3 보이스 클로닝), 길이 측정, ZIP
-producer.py       영상 합성 (ffmpeg) · Gemini 이미지 생성
-uploader.py       YouTube Data API 업로드
-marketing.py      마케팅 콘텐츠 생성 (스레드·블로그·뉴스레터)
-index.html / app.js / style.css   화면
-vendor/           프론트 라이브러리 (로컬 번들 — 오프라인에서도 동작)
-docs/레드라인.md   나노바나나 레드라인 프롬프트 규격
-data/
-  analyses/       영상 분석 결과 ({영상ID}.json, 리포트·자막 txt)
-  plans/          기획서 (.json / .md)
-  audio/          나레이션 MP3 · ZIP
-  renders/        씬 이미지·클립, 완성 영상
-  voices/         내 목소리 프로필
-  youtube/        client_secret.json, token.json
-  marketing/      마케팅 생성 보관함
-  settings.json   백엔드 선택, Gemini API 키
-```
+브라우저에서 **`http://localhost:8989`** 에 접속합니다.
 
-## 6. 자주 묻는 문제
+---
 
-- **상단 배지가 회색이에요** → LM Studio(Local Server) 또는 Ollama가 켜져 있는지 확인. "모델 없음"이면 `ollama pull gemma3`.
-- **AI 분석 없이 데이터만 나와요** → 로컬 AI가 꺼진 상태에서 분석한 경우입니다. 이 결과는 캐시되지 않으니 AI를 켜고 "다시 분석"을 누르세요.
-- **일부 씬 대본/프롬프트가 "기본값"이에요** → 작은 모델이 JSON 형식을 못 지킨 경우입니다. 더 큰 모델(8B 이상)을 쓰거나 다시 생성하세요.
-- **나레이션이 안 만들어져요** → Edge-TTS는 인터넷이 필요합니다.
-- **내 목소리로 합성이 안 돼요** → 서버가 쓰는 환경(`.venv`)에 `torch`, `qwen-tts`가 있어야 합니다: `uv pip install --python .venv/bin/python torch qwen-tts` (수 GB). 미설치 시 기본 음성으로 대체되며 화면에 안내가 표시됩니다. 첫 합성 때 모델 로드로 20~30초 더 걸립니다.
-- **영상 만들기 실패** → `pip3 install imageio-ffmpeg` 확인. 한글 자막 폰트가 없으면 자막 없이 만들어집니다.
-- **인터넷 없이 되나요?** → AI 분석·기획·영상 합성은 로컬에서 되지만, 유튜브 수집·나레이션·이미지 생성·업로드는 인터넷이 필요합니다.
+## 🔒 보안 및 개인정보 보호 안내
+* `.env` 및 OAuth 토큰(`data/youtube/client_secret.json`, `token.json` 등)은 `.gitignore`에 의해 깃허브 원격 저장소에 절대 커밋되지 않도록 보호됩니다.
+* 로컬 AI 모델(LM Studio / Ollama)을 사용하므로 영상 기획 대본과 채널 데이터가 외부 서버로 유출되지 않고 로컬 PC에서 안전하게 처리됩니다.
+
+---
+
+## 📄 라이선스
+본 프로젝트는 개인 학습, 기획 보조 및 비즈니스 콘텐츠 자동화를 위한 오픈소스 도구입니다. 유튜브 데이터 크롤링 및 외부 API 사용 시 각 플랫폼의 서비스 약관을 준수하시기 바랍니다.
