@@ -819,7 +819,7 @@ class TubeInsightHandler(SimpleHTTPRequestHandler):
             return
 
         def work(progress):
-            return analyze.analyze_pipeline(vid, progress_callback=progress)
+            return analyze.analyze_video(vid, progress_callback=progress)
 
         job_id = start_job("analyze", f"분석: {vid}", work)
         self.send_json({"status": "queued", "job_id": job_id})
