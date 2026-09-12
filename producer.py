@@ -796,10 +796,11 @@ def _download_video_output(client, api_key, block, out_path):
         shutil.copyfileobj(r, f)
 
 
-def generate_videos(plan, quality="360p", slots=None, chain=True, skip_existing=True, progress=None):
+def generate_videos(plan, quality="360p", slots=None, chain=True, prompt_only=False, skip_existing=True, progress=None):
     """
     9강 영상 생성 자동화 (Omni 1.1 Flash):
     - 각 장면의 첫 프레임 이미지 + 영상 프롬프트로 10초 클립 생성
+    - prompt_only=True 이면 씬의 첫 프레임 이미지를 참고하지 않고 영상 프롬프트만으로 순수 T2V 비디오 생성
     - chain=True 이면 다음 장면은 previous_interaction_id 로 앞 장면을 이어받음 (누적 영상 → trim_start 로 구간 지정, 4장면마다 새 체인)
     - 장면 하나가 실패해도 나머지는 계속 (실패 원인은 errors 에 그대로 기록)
     """
@@ -832,19 +833,20 @@ def generate_videos(plan, quality="360p", slots=None, chain=True, skip_existing=
                 targets.append(n)
     target_scenes = [sc for sc in scenes if int(sc.get("scene_num", 0)) in targets]
     if not target_scenes:
-        return {"generated": [], "skipped": skipped, "errors": [], "quality": quality, "chain": chain, "media": media_view(plan_id)}
+        return {"generated": [], "skipped": skipped, "errors": [], "quality": quality, "chain": chain, "prompt_only": prompt_only, "media": media_view(plan_id)}
 
-    # 첫 프레임 이미지가 없는 장면만 먼저 생성 (있는 이미지는 재생성하지 않음)
-    for sc in target_scenes:
-        slot = str(int(sc["scene_num"]))
-        if not _first_frame_path(d, slot, idx.get(slot)):
-            if progress:
-                progress("videos", f"씬 {slot} 첫 프레임 이미지 생성 중...", 5)
-            res = generate_images(plan, slots=[slot])
-            idx = list_media(plan_id)
-            if slot not in idx:
-                err = next((e["error"] for e in res.get("errors", []) if e["slot"] == slot), "이미지 생성 실패")
-                print(f"씬 {slot} 이미지 없음: {err}")
+    # 영상프롬프트만 참고(prompt_only)가 아닐 때만 첫 프레임 이미지 사전 생성
+    if not prompt_only:
+        for sc in target_scenes:
+            slot = str(int(sc["scene_num"]))
+            if not _first_frame_path(d, slot, idx.get(slot)):
+                if progress:
+                    progress("videos", f"씬 {slot} 첫 프레임 이미지 생성 중...", 5)
+                res = generate_images(plan, slots=[slot])
+                idx = list_media(plan_id)
+                if slot not in idx:
+                    err = next((e["error"] for e in res.get("errors", []) if e["slot"] == slot), "이미지 생성 실패")
+                    print(f"씬 {slot} 이미지 없음: {err}")
 
     done, errors = [], []
     prev_id, chain_pos, last_num = None, 0, None
@@ -863,17 +865,25 @@ def generate_videos(plan, quality="360p", slots=None, chain=True, skip_existing=
         label = f"씬 {num}/{len(target_scenes)}"
         pct = int(10 + 85 * (i - 1) / max(1, len(target_scenes)))
         if progress:
-            progress("videos", f"{label} AI 영상 생성 중 ({quality})… 1~2분 소요", pct)
+            progress("videos", f"{label} AI 영상 생성 중 ({quality}{' · 프롬프트전용' if prompt_only else ''})… 1~2분 소요", pct)
 
-        text = f"{sc.get('visual_prompt') or sc.get('prompt_en') or sc.get('subtitle') or 'Cinematic documentary shot'} {AUDIO_RULE}"
+        # prompt_only 일 때는 sc['prompt_en'](지식쇼츠 3샷/연출)을 최우선으로 사용하여 상세 T2V 디렉팅 프롬프트를 전달
+        prompt_text = (sc.get('prompt_en') if prompt_only else (sc.get('visual_prompt') or sc.get('prompt_en')))
+        text = f"{prompt_text or sc.get('visual_prompt') or sc.get('subtitle') or 'Cinematic documentary shot'} {AUDIO_RULE}"
         item = idx.get(slot)
-        img_path = _first_frame_path(d, slot, item)
+        img_path = _first_frame_path(d, slot, item) if not prompt_only else None
         use_chain = chain and prev_id is not None and chain_pos < OMNI_CHAIN_MAX
 
         try:
             if use_chain:
                 payload = {"model": VIDEO_MODEL, "previous_interaction_id": prev_id,
                            "input": [{"type": "text", "text": text}], "response_format": fmt}
+            elif prompt_only:
+                # 씬 첫 프레임 이미지 없이 순수 영상 프롬프트만으로 T2V 생성
+                payload = {"model": VIDEO_MODEL,
+                           "input": [{"type": "text", "text": text}],
+                           "response_format": fmt}
+                prev_id, chain_pos = None, 0
             else:
                 if not img_path or not os.path.exists(img_path):
                     raise RuntimeError("첫 프레임 이미지가 없습니다. 먼저 이미지를 생성하거나 넣어주세요.")
@@ -900,9 +910,9 @@ def generate_videos(plan, quality="360p", slots=None, chain=True, skip_existing=
             idx = list_media(plan_id)
             idx[slot] = {"file": fname, "type": "video", "source": "omni", "trim_start": trim_start,
                          "clip_seconds": OMNI_SECONDS, "quality": quality, "interaction_id": _id_of(r),
-                         "chain_pos": chain_pos,
+                         "chain_pos": chain_pos, "prompt_only": prompt_only,
                          "image_file": os.path.basename(img_path) if img_path else None,
-                         "image_source": ((item or {}).get("source") if (item or {}).get("type") == "image" else (item or {}).get("image_source")) or "gemini"}
+                         "image_source": ((item or {}).get("source") if (item or {}).get("type") == "image" else (item or {}).get("image_source")) or ("gemini" if img_path else None)}
             _save_index(plan_id, idx)
             done.append(slot)
             last_num = num
@@ -1356,7 +1366,8 @@ def auto_produce(plan, options=None, progress=None):
         if not gemini_key():
             warnings.append("Gemini API 키가 없어 AI 영상 생성을 건너뛰었습니다.")
         else:
-            res = generate_videos(plan, quality=quality, chain=bool(options.get("chain", True)), skip_existing=True,
+            res = generate_videos(plan, quality=quality, chain=bool(options.get("chain", True)),
+                                  prompt_only=bool(options.get("prompt_only", False)), skip_existing=True,
                                   progress=stage_progress(35, 72, f"2단계 AI 영상({quality})"))
             if res.get("skipped"):
                 warnings.append(f"씬 {', '.join(map(str, res['skipped']))}: 이미 AI 영상이 있어 다시 만들지 않았습니다 (과금 없음).")

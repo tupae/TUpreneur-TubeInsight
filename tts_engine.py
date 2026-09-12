@@ -23,6 +23,7 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 SCENE_SECONDS = 8.0          # 씬 하나의 목표 길이
 SCENE_TOLERANCE = 0.4        # 이 정도 초과는 허용 (편집 시 여유)
 EDGE_CONCURRENCY = 4
+SENTENCE_PAUSE_SECONDS = 0.3 # 문장과 문장 사이 간격 (0.3초 쉼)
 
 # 기본 제공 무료 한국어 나레이션 프리셋 (Edge-TTS)
 PRESET_VOICES = {
@@ -203,6 +204,74 @@ def clean_narration_text(text):
     return clean
 
 
+def split_sentences(text):
+    """
+    텍스트를 문장 단위(마침표, 물음표, 느낌표 등)로 분리합니다.
+    문장 끝 부호(. ? !)는 유지되며, 3.14 같은 숫자의 마침표는 분리되지 않습니다.
+    """
+    if not text:
+        return []
+    raw = text.strip()
+    # 문장 종결 부호(. ? !) 뒤에 공백이 있거나 문자열 끝인 경우 분리
+    parts = re.split(r'((?<=[.?!])(?:\s+|$))', raw)
+    sentences = []
+    buf = ""
+    for p in parts:
+        buf += p
+        if re.search(r'[.?!](?:\s+|$)', p):
+            s = buf.strip()
+            if s and len(clean_narration_text(s)) >= 1:
+                sentences.append(s)
+            buf = ""
+    if buf.strip() and len(clean_narration_text(buf)) >= 1:
+        sentences.append(buf.strip())
+
+    # 문장 부호 없이 줄바꿈으로만 나뉜 경우 보정
+    if len(sentences) <= 1 and "\n" in raw:
+        lines = [l.strip() for l in raw.split("\n") if len(clean_narration_text(l)) >= 1]
+        if len(lines) > 1:
+            sentences = lines
+
+    return sentences if sentences else ([raw] if raw else [])
+
+
+def concat_audio_with_silence(audio_files, output_file, pause_seconds=SENTENCE_PAUSE_SECONDS, target_sr=24000):
+    """
+    여러 오디오 파일을 pause_seconds(기본 0.3초) 무음을 사이에 두고 하나의 오디오로 결합합니다.
+    """
+    if not audio_files:
+        return False
+    if len(audio_files) == 1:
+        if os.path.abspath(audio_files[0]) != os.path.abspath(output_file):
+            shutil.copy(audio_files[0], output_file)
+        return True
+
+    try:
+        combined_data = []
+        silence_len = int(target_sr * max(0.0, pause_seconds))
+        silence = np.zeros(silence_len, dtype=np.float32)
+
+        for fpath in audio_files:
+            if not os.path.exists(fpath) or os.path.getsize(fpath) == 0:
+                continue
+            data, sr = load_audio_universal(fpath, target_sr=target_sr)
+            if data is None or len(data) == 0:
+                continue
+            if len(combined_data) > 0 and len(silence) > 0:
+                combined_data.append(silence)
+            combined_data.append(data)
+
+        if not combined_data:
+            return False
+
+        final_wave = np.concatenate(combined_data)
+        sf.write(output_file, final_wave, target_sr)
+        return True
+    except Exception as e:
+        print(f"오디오 0.3초 무음 결합 오류: {e}")
+        return merge_audio_files(audio_files, output_file, target_sr=target_sr, pause_seconds=pause_seconds)
+
+
 def _resolve_voice(voice_id, rate=None):
     """
     (engine, edge_voice, rate, profile, note) 반환.
@@ -232,31 +301,96 @@ async def _edge_save(text, voice, rate, path):
     await communicate.save(path)
 
 
-def generate_scene_audio(text, voice_id="ko-KR-InJoonNeural", rate=None, output_file="output.mp3"):
-    """단일 문장 합성. 대본이 비어 있으면 None."""
+async def _edge_save_sentences(sentences, voice, rate, output_file, pause_seconds=SENTENCE_PAUSE_SECONDS):
+    """여러 문장을 Edge-TTS로 합성 후 문장 사이에 pause_seconds(기본 0.3초) 무음을 삽입하여 저장."""
+    if not sentences:
+        return False
+    if len(sentences) == 1:
+        await _edge_save(sentences[0], voice, rate, output_file)
+        return True
+
+    tmp_files = []
+    base, _ = os.path.splitext(output_file)
+    try:
+        for idx, s in enumerate(sentences):
+            tmp_p = f"{base}_part_{idx}.mp3"
+            tmp_files.append(tmp_p)
+            await _edge_save(s, voice, rate, tmp_p)
+        concat_audio_with_silence(tmp_files, output_file, pause_seconds=pause_seconds)
+        return True
+    finally:
+        for tmp_p in tmp_files:
+            if os.path.exists(tmp_p):
+                try:
+                    os.remove(tmp_p)
+                except Exception:
+                    pass
+
+
+def generate_scene_audio(text, voice_id="ko-KR-InJoonNeural", rate=None, output_file="output.mp3", pause_seconds=0.0):
+    """단일 문장/씬 합성. pause_seconds > 0일 경우(쇼츠) 문장 사이에 무음을 삽입하고, 그렇지 않으면 원래대로 단일 합성."""
     clean_text = clean_narration_text(text)
     if len(clean_text) < 2:
         return None
     engine, edge_voice, edge_rate, profile, _ = _resolve_voice(voice_id, rate)
+    sentences = split_sentences(clean_text) if pause_seconds > 0 else [clean_text]
+
     if engine == "qwen3":
         try:
-            return Qwen3VoiceCloner.clone_voice(clean_text, profile["ref_audio"], profile["ref_text"], output_file)
+            if len(sentences) <= 1:
+                return Qwen3VoiceCloner.clone_voice(clean_text, profile["ref_audio"], profile["ref_text"], output_file)
+            else:
+                tmp_files = []
+                base, _ = os.path.splitext(output_file)
+                try:
+                    for idx, s in enumerate(sentences):
+                        tmp_p = f"{base}_part_{idx}.wav"
+                        tmp_files.append(tmp_p)
+                        Qwen3VoiceCloner.clone_voice(s, profile["ref_audio"], profile["ref_text"], tmp_p)
+                    concat_audio_with_silence(tmp_files, output_file, pause_seconds=pause_seconds)
+                    return output_file
+                finally:
+                    for tmp_p in tmp_files:
+                        if os.path.exists(tmp_p):
+                            try:
+                                os.remove(tmp_p)
+                            except Exception:
+                                pass
         except Exception as e:
             print(f"보이스 클로닝 실패 → Edge-TTS로 대체: {e}")
             edge_voice, edge_rate = "ko-KR-InJoonNeural", PRESET_VOICES["ko-KR-InJoonNeural"]["default_rate"]
-    asyncio.run(_edge_save(clean_text, edge_voice, edge_rate, output_file))
+
+    if len(sentences) <= 1:
+        asyncio.run(_edge_save(clean_text, edge_voice, edge_rate, output_file))
+    else:
+        asyncio.run(_edge_save_sentences(sentences, edge_voice, edge_rate, output_file, pause_seconds=pause_seconds))
     return output_file
 
 
-def merge_audio_files(input_files, output_file, target_sr=24000):
-    """여러 MP3를 하나로 재인코딩 병합 (단순 바이트 결합은 재생시간 표시가 깨짐)."""
+def merge_audio_files(input_files, output_file, target_sr=24000, pause_seconds=0.0):
+    """여러 MP3를 하나로 재인코딩 병합 (pause_seconds > 0일 때 파일 사이에 무음 삽입)."""
     try:
         out = av.open(output_file, mode="w")
         out_stream = out.add_stream("mp3", rate=target_sr)
         resampler = av.AudioResampler(format="s16", layout="stereo", rate=target_sr)
+
+        silence_samples = int(target_sr * max(0.0, pause_seconds)) if pause_seconds > 0 else 0
+        silence_frame = None
+        if silence_samples > 0:
+            silence_arr = np.zeros((2, silence_samples), dtype=np.int16)
+            silence_frame = av.AudioFrame.from_ndarray(silence_arr, format="s16", layout="stereo")
+            silence_frame.sample_rate = target_sr
+
+        first = True
         for fpath in input_files:
-            if not os.path.exists(fpath):
+            if not os.path.exists(fpath) or os.path.getsize(fpath) == 0:
                 continue
+            if not first and silence_frame is not None:
+                silence_frame.pts = None
+                for packet in out_stream.encode(silence_frame):
+                    out.mux(packet)
+            first = False
+
             container = av.open(fpath)
             for frame in container.decode(audio=0):
                 frame.pts = None
@@ -273,9 +407,11 @@ def merge_audio_files(input_files, output_file, target_sr=24000):
         return False
 
 
-def generate_all_scenes_audio(scenes, plan_id, voice_id="ko-KR-InJoonNeural", rate=None, progress_callback=None):
+def generate_all_scenes_audio(scenes, plan_id, voice_id="ko-KR-InJoonNeural", rate=None, progress_callback=None, pause_seconds=0.0):
     """
     씬 리스트를 받아 씬별 MP3, 전체 병합본, ZIP을 생성합니다.
+    - pause_seconds > 0 (쇼츠): 문장과 문장 사이 0.3초 무음 삽입
+    - pause_seconds == 0 (표준·미드폼·롱폼): 원래 그대로 단일 합성 유지
     - 프리셋 보이스는 병렬 합성, 씬 하나가 실패해도 나머지는 계속
     - 각 씬의 실제 길이를 재서 8초 초과 씬에 over_limit 표시
     - 결과에 사용된 엔진(edge/qwen3)과 대체 사유(note)를 포함
@@ -286,7 +422,7 @@ def generate_all_scenes_audio(scenes, plan_id, voice_id="ko-KR-InJoonNeural", ra
 
     engine, edge_voice, edge_rate, profile, note = _resolve_voice(voice_id, rate)
     results = []
-    edge_batch = []  # (idx, text, path)
+    edge_batch = []  # (idx, sentences, path)
 
     for i, scene in enumerate(scenes, 1):
         scene_num = int(scene.get("scene_num", i))
@@ -305,18 +441,38 @@ def generate_all_scenes_audio(scenes, plan_id, voice_id="ko-KR-InJoonNeural", ra
             item["error"] = "대본이 비어 있어 건너뜀"
             continue
 
+        # pause_seconds > 0 (쇼츠)일 때만 문장 분리, 일반 영상은 원래 그대로 단일 처리
+        sentences = split_sentences(clean_text) if pause_seconds > 0 else [clean_text]
+
         if engine == "edge":
-            edge_batch.append((len(results) - 1, clean_text, out_path))
+            edge_batch.append((len(results) - 1, sentences, out_path))
         else:
             if progress_callback:
                 progress_callback("audio", f"씬 {scene_num} 내 목소리로 합성 중...")
             try:
-                Qwen3VoiceCloner.clone_voice(clean_text, profile["ref_audio"], profile["ref_text"], out_path)
+                if len(sentences) <= 1:
+                    Qwen3VoiceCloner.clone_voice(clean_text, profile["ref_audio"], profile["ref_text"], out_path)
+                else:
+                    tmp_files = []
+                    base, _ = os.path.splitext(out_path)
+                    try:
+                        for idx, s in enumerate(sentences):
+                            tmp_p = f"{base}_part_{idx}.wav"
+                            tmp_files.append(tmp_p)
+                            Qwen3VoiceCloner.clone_voice(s, profile["ref_audio"], profile["ref_text"], tmp_p)
+                        concat_audio_with_silence(tmp_files, out_path, pause_seconds=pause_seconds)
+                    finally:
+                        for tmp_p in tmp_files:
+                            if os.path.exists(tmp_p):
+                                try:
+                                    os.remove(tmp_p)
+                                except Exception:
+                                    pass
             except Exception as e:
                 print(f"  ⚠️ 씬 {scene_num} 클로닝 실패({str(e)[:120]}) → 기본 음성으로 대체")
                 try:
                     fb = PRESET_VOICES["ko-KR-InJoonNeural"]
-                    asyncio.run(_edge_save(clean_text, fb["id"], fb["default_rate"], out_path))
+                    asyncio.run(_edge_save_sentences(sentences, fb["id"], fb["default_rate"], out_path, pause_seconds=pause_seconds))
                     item["fallback"] = f"클로닝 실패로 기본 음성 대체: {str(e)[:120]}"
                 except Exception as e2:
                     item["error"] = f"보이스 클로닝 실패: {str(e)[:150]} / 대체 합성도 실패: {e2}"
@@ -328,11 +484,14 @@ def generate_all_scenes_audio(scenes, plan_id, voice_id="ko-KR-InJoonNeural", ra
         async def _run_batch():
             sem = asyncio.Semaphore(EDGE_CONCURRENCY)
 
-            async def _one(text, path):
+            async def _one(s_list, path):
                 async with sem:
-                    await _edge_save(text, edge_voice, edge_rate, path)
+                    if len(s_list) <= 1:
+                        await _edge_save(s_list[0], edge_voice, edge_rate, path)
+                    else:
+                        await _edge_save_sentences(s_list, edge_voice, edge_rate, path, pause_seconds=pause_seconds)
 
-            return await asyncio.gather(*[_one(t, p) for _, t, p in edge_batch], return_exceptions=True)
+            return await asyncio.gather(*[_one(s_list, p) for _, s_list, p in edge_batch], return_exceptions=True)
 
         outcomes = asyncio.run(_run_batch())
         for (idx, _, _), outcome in zip(edge_batch, outcomes):
@@ -355,7 +514,7 @@ def generate_all_scenes_audio(scenes, plan_id, voice_id="ko-KR-InJoonNeural", ra
     full_path = os.path.join(topic_audio_dir, "full_narration.mp3")
     full_url = None
     if merge_list:
-        if not merge_audio_files(merge_list, full_path):
+        if not merge_audio_files(merge_list, full_path, pause_seconds=SENTENCE_PAUSE_SECONDS):
             with open(full_path, "wb") as outfile:
                 for fpath in merge_list:
                     with open(fpath, "rb") as infile:

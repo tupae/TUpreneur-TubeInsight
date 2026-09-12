@@ -311,6 +311,14 @@ def _balanced_json_span(text):
     return text[start:]  # 끊긴 경우: 있는 만큼
 
 
+def _fix_missing_commas(s):
+    """LLM이 긴 문자열 끝에 쉼표(,)를 빠뜨리고 다음 키로 넘어간 경우 자동으로 쉼표를 복원합니다."""
+    s = re.sub(r'\"(\s*[\r\n]+\s*)\"', r'",\1"', s)
+    s = re.sub(r'}(\s*[\r\n]+\s*){', r'},\1{', s)
+    s = re.sub(r'([0-9]|true|false|null)(\s*[\r\n]+\s*)\"', r'\1,\2"', s, flags=re.IGNORECASE)
+    return s
+
+
 def extract_json(text):
     """LLM 응답에서 JSON 객체/배열을 최대한 복원해 반환합니다. 실패 시 None."""
     if not text:
@@ -320,7 +328,12 @@ def extract_json(text):
     if span:
         candidates.append(span)
     for cand in candidates:
-        for fixer in (lambda s: s, _repair_json):
+        for fixer in (
+            lambda s: s,
+            _fix_missing_commas,
+            _repair_json,
+            lambda s: _repair_json(_fix_missing_commas(s)),
+        ):
             try:
                 return json.loads(fixer(cand))
             except Exception:
@@ -330,6 +343,7 @@ def extract_json(text):
 
 def _repair_json(s):
     """끝 쉼표·제어문자 제거 후, 잘린 응답이면 열린 문자열/괄호를 올바른 순서로 닫습니다."""
+    s = _fix_missing_commas(s)
     s = re.sub(r",\s*([}\]])", r"\1", s)
     s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
     stack = []

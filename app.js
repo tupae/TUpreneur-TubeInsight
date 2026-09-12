@@ -344,10 +344,22 @@ async function loadHistory() {
   fillChannelAnalysisSelect();
 }
 function fillReferenceSelect() {
-  const sel = $('referenceSelect'); const cur = sel.value || (state.analysis && state.analysis.id);
-  const list = state.history.analyses.filter((a) => a.ai_ok !== false);
-  sel.innerHTML = list.map((a) => `<option value="${a.id}">${escapeHtml((a.title || a.id).slice(0, 34))}</option>`).join('') || '<option value="">분석된 영상 없음 (기본 공식 사용)</option>';
-  if (cur && list.some((a) => a.id === cur)) sel.value = cur;
+  const sel = $('referenceSelect'); if (!sel) return;
+  const cur = sel.value || (state.analysis && state.analysis.id);
+  const list = (state.history?.analyses || []).filter((a) => a.ai_ok !== false);
+  let options = '<option value="">기본 공식 (벤치마크 없음)</option>';
+  options += '<option value="쇼츠 스크립트">쇼츠 스크립트</option>';
+  if (list.length > 0) {
+    options += list.map((a) => `<option value="${a.id}">${escapeHtml((a.title || a.id).slice(0, 34))}</option>`).join('');
+  }
+  sel.innerHTML = options;
+  if (cur) {
+    if (cur === '쇼츠 스크립트' || cur === 'shorts-script') {
+      sel.value = '쇼츠 스크립트';
+    } else if (list.some((a) => a.id === cur)) {
+      sel.value = cur;
+    }
+  }
 }
 function fillPlanSelect(sel, withPlaceholder) {
   if (!sel) return;
@@ -1178,8 +1190,9 @@ function renderPlan(plan) {
   stopFullAudio();
   if ($('genEmptyState')) $('genEmptyState').style.display = 'none';
   const scenes = plan.structured_scenes || [], n = scenes.length, q = plan.quality || {};
-  $('genTopicBadge').textContent = `주제: ${plan.topic}`;
-  $('genRefBadge').textContent = plan.reference ? `벤치마크: ${plan.reference.title.slice(0, 28)}` : '벤치마크: 기본 공식';
+  const refTitle = plan.reference ? (plan.reference.title || plan.reference.id || '').slice(0, 28) : '기본 공식';
+  const guideTitle = plan.style_guide ? ` · 스타일: ${plan.style_guide.replace(/\.(md|txt)$/i, '')}` : '';
+  $('genRefBadge').textContent = `벤치마크: ${refTitle}${guideTitle}`;
   const allOk = q.scenes_parsed === n && q.prompts_parsed === n && q.images_parsed === n;
   $('genQualityBadge').textContent = `대본 ${q.scenes_parsed ?? '?'}/${n} · 영상 프롬프트 ${q.prompts_parsed ?? '?'}/${n} · 이미지 프롬프트 ${q.images_parsed ?? '?'}/${n}`;
   $('genQualityBadge').className = 'badge badge-mono ' + (allOk ? 'badge-ok' : 'badge-warn');
@@ -1341,9 +1354,14 @@ async function loadStyleGuides() {
   const cur = sel.value;
   try {
     const r = await api('/api/knowledge');
+    let guides = r.guides || [];
+    if (!guides.some((g) => g.name === '지식쇼츠' || g.name === 'knowledge-shorts')) {
+      guides = [{ name: '지식쇼츠' }, ...guides];
+    }
     sel.innerHTML = '<option value="">기본 (내장 레드라인 규칙)</option>' +
-      (r.guides || []).map((g) => `<option value="${escapeHtml(g.name)}">${escapeHtml(g.name.replace(/\.(md|txt)$/i, ''))}</option>`).join('');
-    if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
+      guides.map((g) => `<option value="${escapeHtml(g.name)}">${escapeHtml(g.name.replace(/\.(md|txt)$/i, ''))}</option>`).join('');
+    if (cur === 'knowledge-shorts') sel.value = '지식쇼츠';
+    else if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
     else if ([...sel.options].some((o) => o.value === '레드라인.md')) sel.value = '레드라인.md';
   } catch (e) { /* 무시 */ }
 }
@@ -1466,6 +1484,17 @@ function bindProducer() {
   $('btnReviewStop')?.addEventListener('click', () => { $('reviewBar').style.display = 'none'; showToast('중단했습니다. 이미지는 저장돼 있으니 언제든 "▶ 완성 영상 만들기"로 이어서 진행하세요.'); });
   $('btnBuildVideo').addEventListener('click', buildVideo);
   $('videoQualitySelect').addEventListener('change', updateCostEstimate);
+  $('videoPromptOnly')?.addEventListener('change', (e) => {
+    const isPromptOnly = e.target.checked;
+    const chainEl = $('videoChain');
+    if (isPromptOnly && chainEl) {
+      chainEl.checked = false;
+      showToast('영상 프롬프트만 참고 활성화: 각 씬 카드의 카메라 아이콘이 활성화되었습니다.');
+    } else if (!isPromptOnly && chainEl) {
+      chainEl.checked = true;
+    }
+    updatePromptVideoButtonsState();
+  });
   $('btnYtConnect').addEventListener('click', connectYoutube);
   $('ytSecretFile')?.addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -1654,6 +1683,7 @@ function renderMediaGrid() {
         </div>`;
       }
 
+      const isPromptOnly = $('videoPromptOnly')?.checked === true;
       return `<div class="space-y-1">
       <div class="dropzone" data-slot="${slot}" title="클릭하거나 파일을 끌어다 놓으세요">
         ${
@@ -1670,7 +1700,11 @@ function renderMediaGrid() {
       </div>
       <div class="flex items-center justify-between gap-1">
         <div class="text-[11px] font-bold text-neutral-700">${label}</div>
-        ${slot !== 'thumbnail' ? `<button class="text-[10px] text-purple-700 hover:underline scene-video-btn" data-slot="${slot}" title="이 씬만 AI 영상 생성 (현재 화질 설정 적용, 첫 프레임 이미지는 유지)">${m && m.type === 'video' ? '🎬 이 씬만 다시' : '🎬 이 씬만 AI 영상'}</button>` : ''}
+        ${slot !== 'thumbnail' ? `
+          <div class="flex items-center gap-1.5">
+            <button class="text-[10px] text-purple-700 hover:underline scene-video-btn" data-slot="${slot}" title="이 씬만 AI 영상 생성 (기본 모드)">${m && m.type === 'video' ? '🎬 이 씬만 다시' : '🎬 이 씬만 AI 영상'}</button>
+            <button class="scene-prompt-video-btn p-1 rounded transition-all inline-flex items-center justify-center ${isPromptOnly ? 'text-purple-600 hover:bg-purple-100 cursor-pointer' : 'text-neutral-300 opacity-40 cursor-not-allowed'}" data-slot="${slot}" ${isPromptOnly ? '' : 'disabled'} title="${isPromptOnly ? `씬 ${slot}: 영상 프롬프트만으로 AI 영상 생성` : '\'영상프롬프트만 참고\' 선택 시 활성화됩니다'}"><i data-lucide="video" class="w-3.5 h-3.5"></i></button>
+          </div>` : ''}
       </div>
       <div class="text-[10px] text-neutral-400 truncate" title="${escapeHtml(sub || '')}">${escapeHtml(sub || '')}</div>
     </div>`;
@@ -1700,6 +1734,13 @@ function renderMediaGrid() {
     if (!state.env?.gemini_key_set) { showToast('Gemini API 키를 먼저 저장하세요.', true); return; }
     generateVideos([b.dataset.slot]);
   }));
+
+  grid.querySelectorAll('.scene-prompt-video-btn').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!state.env?.gemini_key_set) { showToast('Gemini API 키를 먼저 저장하세요.', true); return; }
+    if (b.disabled) return;
+    generateVideos([b.dataset.slot], { promptOnly: true, chain: false });
+  }));
   grid.querySelectorAll('[data-remove]').forEach((b) =>
     b.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -1725,6 +1766,20 @@ function renderMediaGrid() {
   if (zipBtn) zipBtn.style.display = (nImage + nVideo + (state.media['thumbnail'] ? 1 : 0)) > 0 ? 'inline-flex' : 'none';
   renderNextStepGuide(sceneSlots.length, nVideo, nImage, nEmpty);
   icons();
+}
+
+function updatePromptVideoButtonsState() {
+  const isPromptOnly = $('videoPromptOnly')?.checked === true;
+  document.querySelectorAll('.scene-prompt-video-btn').forEach((b) => {
+    b.disabled = !isPromptOnly;
+    if (isPromptOnly) {
+      b.className = 'scene-prompt-video-btn p-1 rounded transition-all inline-flex items-center justify-center text-purple-600 hover:bg-purple-100 cursor-pointer';
+      b.title = `씬 ${b.dataset.slot}: 영상 프롬프트만으로 AI 영상 생성`;
+    } else {
+      b.className = 'scene-prompt-video-btn p-1 rounded transition-all inline-flex items-center justify-center text-neutral-300 opacity-40 cursor-not-allowed';
+      b.title = "'영상프롬프트만 참고' 선택 시 활성화됩니다";
+    }
+  });
 }
 
 // ③ 상단: 현재 상태를 보고 "지금 눌러야 할 버튼"을 한 줄로 안내
@@ -1846,7 +1901,7 @@ function videoCostKrw(numScenes, quality) {
   return { usd, krw: Math.round(usd * 1400 / 10) * 10 };
 }
 
-async function generateVideos(slots = null) {
+async function generateVideos(slots = null, opts = {}) {
   if (!Array.isArray(slots)) slots = null;
   if (!state.producePlan) return;
   const mc = mediaCounts();
@@ -1855,15 +1910,37 @@ async function generateVideos(slots = null) {
   const q = $('videoQualitySelect')?.value || '360p';
   const cost = videoCostKrw(count, q);
   const skipNote = !slots && mc.hasVideo ? ` (이미 AI 영상이 있는 ${mc.hasVideo}개 씬은 유지)` : '';
+  const isPromptOnly = opts.promptOnly !== undefined ? opts.promptOnly : ($('videoPromptOnly')?.checked === true);
+  const isChain = opts.chain !== undefined ? opts.chain : (isPromptOnly ? false : ($('videoChain')?.checked !== false));
+  const targetDesc = slots ? `지정한 씬 [씬 ${slots.join(', ')}] (${count}개)` : `AI 영상이 없는 ${count}개 씬`;
+  const modeDesc = isPromptOnly 
+    ? '✨ 영상 프롬프트만 참고 (T2V · 첫 프레임 이미지 미사용)' 
+    : '🖼️ 첫 프레임 이미지 + 프롬프트 (I2V)';
+  const chainDesc = isChain 
+    ? '🔗 켜짐 (이전 씬 마지막 프레임과 연속 연결)' 
+    : '⚡ 꺼짐 (각 씬 독립적 연출 생성)';
+
+  const lines = [
+    `AI 영상 ${count}개 (${q})를 생성합니다.${skipNote}`,
+    '',
+    `• 대상: ${targetDesc}`,
+    `• 생성 모드: ${modeDesc}`,
+    `• 앞 장면 이어받기: ${chainDesc}`,
+    `• 예상 비용: 약 $${cost.usd.toFixed(2)} (${cost.krw.toLocaleString()}원) — Gemini API 과금`
+  ];
+  if (isPromptOnly && isChain) {
+    lines.push('');
+    lines.push(`💡 안내: '영상 프롬프트만 참고' 시 씬 고유 연출(Shot 1·2·3)을 온전히 살리려면 '앞 장면 이어받기'를 끄는 것을 권장합니다.`);
+  } else if (isPromptOnly && slots) {
+    lines.push('');
+    lines.push(`💡 팁: 해당 씬의 프롬프트만으로 독자적인 AI 클립을 생성합니다.`);
+  }
+
   const ok = await tiConfirm({
     title: 'AI 영상 생성 확인',
     subtitle: `Omni 1.1 Flash (${q})`,
     icon: 'video',
-    lines: [
-      `AI 영상 ${count}개 (${q})를 생성합니다.${skipNote}`,
-      '',
-      `• 예상 비용: 약 $${cost.usd.toFixed(2)} (${cost.krw.toLocaleString()}원) — Gemini API 과금`
-    ],
+    lines,
     okText: 'AI 영상 생성 시작',
     cancelText: '취소'
   });
@@ -1882,9 +1959,10 @@ async function generateVideos(slots = null) {
     const resp = await api('/api/render/videos', {
       plan_id: state.producePlan.plan_id,
       quality,
-      chain: $('videoChain')?.checked !== false,
+      chain: isChain,
+      prompt_only: isPromptOnly,
       slots: slots || undefined,
-      skip_existing: true,
+      skip_existing: slots ? false : true,
     });
     const r = await runJob(resp, (job) => {
       if (pFill) pFill.style.width = `${job.progress || 10}%`;
@@ -1963,6 +2041,13 @@ async function autoProduce() {
   const totalUsd = imgUsd + (includeVideos ? vc.usd : 0);
   const totalKrw = Math.round(totalUsd * 1400 / 10) * 10;
 
+  const isPromptOnly = $('videoPromptOnly')?.checked === true;
+  const isChain = $('videoChain')?.checked !== false;
+  const videoModeLabel = isPromptOnly ? '영상 프롬프트만(T2V)' : '이미지+프롬프트(I2V)';
+  const imgLabel = (isPromptOnly && includeVideos) 
+    ? '건너뜀 (영상 프롬프트만 참고 모드 · $0)' 
+    : `${mc.imagesMissing}개 (약 $${imgUsd.toFixed(2)})`;
+
   const ok = await tiConfirm({
     title: '완성 영상 자동 제작 확인',
     subtitle: state.producePlan.topic || state.producePlan.plan_id,
@@ -1970,8 +2055,8 @@ async function autoProduce() {
     lines: [
       `이미 있는 이미지·AI 영상은 다시 만들지 않습니다 (비용 $0).`,
       '',
-      `• 씬 이미지 생성: ${mc.imagesMissing}개 (약 $${imgUsd.toFixed(2)})`,
-      includeVideos ? `• AI 영상 생성: ${nVid}개 · ${quality} (약 $${vc.usd.toFixed(2)}, ${vc.krw.toLocaleString()}원)` : `• AI 영상: 생성 안 함 (정지 이미지 켄번즈로 합성)`,
+      `• 씬 이미지 생성: ${imgLabel}`,
+      includeVideos ? `• AI 영상 생성: ${nVid}개 · ${quality} [${videoModeLabel}, 이어받기: ${isChain ? 'ON' : 'OFF'}] (약 $${vc.usd.toFixed(2)}, ${vc.krw.toLocaleString()}원)` : `• AI 영상: 생성 안 함 (정지 이미지 켄번즈로 합성)`,
       `• 나레이션·자막 합성: 무료 (로컬 처리)`,
       '',
       (mc.imagesMissing + nVid) === 0 ? `과금 없이 합성만 진행합니다.` : `예상 총 비용: 약 $${totalUsd.toFixed(2)} (${totalKrw.toLocaleString()}원)`
@@ -2002,6 +2087,7 @@ async function autoProduce() {
       burn_subtitles: burnSubtitles,
       fit_narration: fitNarration,
       chain: $('videoChain')?.checked !== false,
+      prompt_only: $('videoPromptOnly')?.checked === true,
       subtitle_style: $('subtitleStyleSelect')?.value || 'outline',
       transition: $('transitionSelect')?.value || 'fade',
     });

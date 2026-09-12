@@ -541,7 +541,12 @@
             </div>
           </div>
           <div class="flex items-center gap-2 pt-3 border-t border-neutral-100 flex-wrap text-xs">
-            <label class="opt"><span>벤치마크</span><select id="referenceSelect" class="select"></select></label>
+            <label class="opt"><span>벤치마크</span>
+              <select id="referenceSelect" class="select">
+                <option value="">기본 공식 (벤치마크 없음)</option>
+                <option value="쇼츠 스크립트">쇼츠 스크립트</option>
+              </select>
+            </label>
             <label class="opt"><span>비율</span>
               <select id="aspectRatioSelect" class="select"><option value="16:9" selected>16:9 가로</option><option value="9:16">9:16 쇼츠</option></select></label>
             <label class="opt" title="씬 수 × 씬당 초. 긴 영상은 씬당 나레이션이 2~3문장으로 길어집니다"><span>길이</span>
@@ -554,8 +559,12 @@
               </select></label>
             <label class="opt"><span>나레이션</span><select id="voiceSelect" class="select"></select></label>
             <button id="btnOpenVoiceModal" class="btn btn-ghost !py-1.5"><i data-lucide="mic" class="w-3.5 h-3.5"></i> 내 목소리 등록</button>
-            <label class="opt" title="이미지 프롬프트를 만들 때 참고할 문서. data/knowledge/ 폴더에 .md/.txt 를 넣으면 여기 나타납니다"><span>스타일 가이드</span>
-              <select id="styleGuideSelect" class="select"><option value="">기본 (내장 레드라인 규칙)</option></select></label>
+            <label class="opt" title="프롬프트 생성 시 참고할 가이드. data/knowledge/ 또는 docs/ 스킬"><span>스타일 가이드</span>
+              <select id="styleGuideSelect" class="select">
+                <option value="">기본 (내장 레드라인 규칙)</option>
+                <option value="지식쇼츠">지식쇼츠</option>
+              </select>
+            </label>
             <label class="opt ml-auto"><span>최근 기획서</span><select id="planHistorySelect" class="select"><option value="">불러오기…</option></select></label>
           </div>
           <div class="flex items-center gap-1.5 mt-3 pt-2 border-t border-neutral-100 text-xs text-neutral-500 flex-wrap">
@@ -783,6 +792,7 @@
                 </select>
               </label>
               <label class="opt cursor-pointer" title="켜면 씬 2부터 앞 장면을 이어받아 자연스럽게 연결됩니다(최대 4장면). 끄면 씬마다 자기 첫 프레임 이미지로 따로 만듭니다"><input type="checkbox" id="videoChain" checked class="rounded border-neutral-300"> 앞 장면 이어받기</label>
+              <label class="opt cursor-pointer" title="체크 시 첫 프레임 이미지를 참조하지 않고, ②단계에서 작성된 영상 프롬프트(카메라 워킹·연출·샷 구성)만으로 순수 AI 영상을 생성합니다"><input type="checkbox" id="videoPromptOnly" class="rounded border-neutral-300"> 영상프롬프트만 참고</label>
               <button id="btnGenerateVideos" class="btn btn-primary"><i data-lucide="video" class="w-3.5 h-3.5"></i> 씬별 AI 영상 생성 시작</button>
             </div>
             <div id="videosProgressBox" style="display:none" class="mb-3">

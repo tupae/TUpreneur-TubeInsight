@@ -22,7 +22,12 @@ SUB_LANG_PRIORITY = ["ko", "ko-KR", "ko-orig", "en", "en-US", "en-GB", "en-orig"
 
 
 def extract_video_id(url):
-    match = re.search(r"(?:v=|youtu\.be/|shorts/|embed/|live/)([A-Za-z0-9_-]{11})", url or "")
+    if not url:
+        return None
+    url = url.strip()
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", url):
+        return url
+    match = re.search(r"(?:v=|youtu\.be/|shorts/|embed/|live/)([A-Za-z0-9_-]{11})", url)
     return match.group(1) if match else None
 
 

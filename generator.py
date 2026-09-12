@@ -12,6 +12,9 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 PLANS_DIR = os.path.join(DATA_DIR, "plans")
 ANALYSES_DIR = os.path.join(DATA_DIR, "analyses")
 KNOWLEDGE_DIR = os.path.join(DATA_DIR, "knowledge")
+DOCS_DIR = os.path.join(BASE_DIR, "docs")
+SHORTS_SCRIPT_PATH = os.path.join(DOCS_DIR, "1. shorts-script-writer-SKILL.md")
+KNOWLEDGE_SHORTS_PATH = os.path.join(DOCS_DIR, "2. knowledge-shorts-prompts-SKILL.md")
 os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
 os.makedirs(PLANS_DIR, exist_ok=True)
 
@@ -21,8 +24,15 @@ CHUNK_SIZE = 8             # 씬이 많을 때 LLM 호출을 나누는 단위 (�
 
 
 def narration_bounds(secs):
-    """씬 길이(초)에 맞는 나레이션 글자 수 (하한, 상한, 경고 기준). 실측 TTS 속도 약 7자/초 기준."""
-    return int(secs * 5.2), int(secs * 6.6), int(secs * 8.5)
+    """씬 길이(초)에 맞는 나레이션 글자 수 (하한, 상한, 경고 기준).
+    쇼츠(8초 씬) 60~65자 기준을 미드폼/롱폼(10초, 15초)에도 일관되게 적용하여 오디오 갭을 방지합니다."""
+    if secs <= 8:
+        return 58, 68, 82
+    elif secs <= 10:
+        return 70, 80, 95
+    elif secs <= 15:
+        return 100, 118, 140
+    return int(secs * 7.0), int(secs * 8.0), int(secs * 9.5)
 
 STAGE_NAMES = [
     ("도입", "The Setup — 기대를 심고 곧바로 반전으로 시선을 붙잡음"),
@@ -360,8 +370,10 @@ def save_plan(plan):
 
 
 def list_style_guides():
-    """data/knowledge/ 의 .md/.txt 문서 목록 (② 스타일 가이드 드롭다운용)."""
+    """data/knowledge/ 및 docs/ 의 문서 목록 (② 스타일 가이드 드롭다운용)."""
     items = []
+    if os.path.exists(KNOWLEDGE_SHORTS_PATH):
+        items.append({"name": "지식쇼츠", "chars": os.path.getsize(KNOWLEDGE_SHORTS_PATH)})
     for f in sorted(os.listdir(KNOWLEDGE_DIR)):
         if f.lower().endswith((".md", ".txt")):
             path = os.path.join(KNOWLEDGE_DIR, f)
@@ -370,9 +382,13 @@ def list_style_guides():
 
 
 def load_style_guide(name):
-    """스타일 가이드 문서 내용 (앞 3,500자). 없으면 None."""
+    """스타일 가이드 문서 내용. 없으면 None."""
     if not name:
         return None
+    if name in ("지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md"):
+        if os.path.exists(KNOWLEDGE_SHORTS_PATH):
+            with open(KNOWLEDGE_SHORTS_PATH, encoding="utf-8", errors="ignore") as f:
+                return f.read()
     safe = os.path.basename(name)
     path = os.path.join(KNOWLEDGE_DIR, safe)
     if not os.path.exists(path):
@@ -384,7 +400,23 @@ def load_style_guide(name):
 # ── 레퍼런스(벤치마크 영상) 지식 ───────────────────────────────────────
 
 def load_reference_knowledge(reference_id=None):
-    """분석해 둔 영상의 리포트·자막을 레퍼런스로 사용합니다. 없으면 기본 샘플(난지도 영상)."""
+    """분석해 둔 영상의 리포트·자막 또는 docs 스킬을 레퍼런스로 사용합니다. 없으면 기본 샘플(난지도 영상)."""
+    if reference_id in ("쇼츠 스크립트", "shorts-script"):
+        skill_text = ""
+        if os.path.exists(SHORTS_SCRIPT_PATH):
+            with open(SHORTS_SCRIPT_PATH, encoding="utf-8", errors="ignore") as f:
+                skill_text = f.read()
+        knowledge = (
+            "[벤치마크/스킬 규칙: 쇼츠 스크립트 (100만 조회 쇼츠 대본 공식)]\n\n"
+            f"{skill_text}"
+        )
+        return knowledge, {
+            "id": "쇼츠 스크립트",
+            "title": "쇼츠 스크립트",
+            "channel": "Skill Document",
+            "view_count": 1000000,
+        }
+
     for vid in [reference_id, DEFAULT_REFERENCE_ID]:
         if not vid:
             continue
@@ -488,7 +520,7 @@ def description_plain(meta):
 
 # ── 2단계: 8초 씬 대본 ──────────────────────────────────────────────────
 
-def step_scenes(topic, meta, knowledge, num_scenes, plan, secs=SCENE_SECONDS):
+def step_scenes(topic, meta, knowledge, num_scenes, plan, secs=SCENE_SECONDS, reference_id=None):
     """씬이 많으면(>CHUNK_SIZE) 구간을 나눠 여러 번 호출해 이어 붙입니다 (출력 잘림 방지)."""
     lo, hi, _mx = narration_bounds(secs)
     stage_lines = "\n".join(
@@ -496,7 +528,7 @@ def step_scenes(topic, meta, knowledge, num_scenes, plan, secs=SCENE_SECONDS):
         f" ({_time_range(st['start'], secs).split(' ~ ')[0]} ~ {_time_range(st['end'], secs).split(' ~ ')[1]}): {st['name']} — {st['desc']}"
         for st in plan
     )
-    sent_hint = "한 문장" if secs <= 10 else ("2문장" if secs <= 16 else "2~3문장")
+    sent_hint = "1~2문장" if secs <= 8 else ("2문장" if secs <= 12 else "2~3문장")
     schema = (
         '{\n  "scenes": [\n'
         f'    {{"scene_num": 1, "stage": "도입", "emotion": "핵심 감정/역할", '
@@ -504,22 +536,58 @@ def step_scenes(topic, meta, knowledge, num_scenes, plan, secs=SCENE_SECONDS):
         "  ]\n}"
     )
     all_scenes, raws, prev_tail = [], [], ""
+    is_shorts_script = (reference_id in ("쇼츠 스크립트", "shorts-script"))
+
+    shorts_formula = (
+        "【100만 조회 대본 공식 (shorts-script-writer) 필수 규칙】\n"
+        "1. 오프닝 2단 (문장 형태 엄격 준수, 각 씬 60~65자 완성):\n"
+        "   - 씬 1 (오프닝 1단): 반드시 \"여기 [장소]에는 [모순]이 있습니다.\" 형식으로 시작하고 대상을 수식하는 문장을 덧붙여 60자 내외로 채우세요. (예: \"여기 서울 한복판에는 강인데 흐르지 않는 거대한 물길이 있습니다. 도심 한가운데 갇힌 채 멈춰선 미스터리죠.\")\n"
+        "   - 씬 2 (오프닝 2단): 반드시 \"[친숙한 묘사] 지금의 [이름]이죠.\" 형식으로 정체를 공개하고 일상 사실을 이어붙이세요. (예: \"매일 수만 명이 오가는 지금의 한강공원입니다. 우리가 당연하게 누리던 일상 뒤엔 충격적인 비밀이 숨겨져 있죠.\")\n"
+        "   - 씬 3 (반전 선언): 세 번째 문장에서 충격 반전을 선언하고 구체적 배경을 밝히세요. (예: \"이 물은 저절로 이렇게 된 게 아니라 1986년에 사람이 강제로 가둬서 만든 겁니다. 거대한 수중보가 바닥에 깔려 있죠.\")\n"
+        "2. 전개 및 위기:\n"
+        "   - 첫 문제는 미끼입니다. 문제를 해결하려다 더 큰 난관에 봉착하고, 반드시 \"진짜 문제는 따로 있었습니다.\" 또는 \"진짜 문제는 [핵심 문제]였습니다.\" 문장으로 판을 뒤집으세요.\n"
+        "   - 시청자 대신 질문하기 (핵심 장치): 시청자가 떠올릴 법한 뻔한 해법을 대신 질문하고 즉시 부숩니다. 반드시 \"그럼 [뻔한 해법]하면 되지 않냐고요? [그 순간 벌어지는 일]\" 형태를 1~2회 사용하세요. (예: \"그럼 하구를 아예 막아 버리면 되지 않냐고요? 막는 순간 강물이 갈 곳을 잃고 도심이 침수됩니다.\")\n"
+        "   - 감정 삽입구: 위기 최고조 설명 사이에 반드시 \"정말 환장할 노릇이죠.\" 한 줄을 삽입하세요.\n"
+        "3. 전환점 및 해법:\n"
+        "   - 전환점: 반드시 \"그래서 발상을 뒤집습니다.\" 문장으로 해법을 열고 기상천외한 공법과 구체적 수치를 제시하세요.\n"
+        "4. 종결 공식 (별칭 종결):\n"
+        "   - 마지막 씬: 반드시 \"[한 줄 별칭] [이름]은 이렇게 탄생한 겁니다.\" 형식으로 끝맺으세요. (예: \"산꼭대기의 거대한 물그릇, 천년의 요새 남한산성은 불가능을 뚫고 이렇게 탄생한 겁니다.\")\n"
+        "5. 문장 장치 준수:\n"
+        "   - 모든 수치는 일상 사물로 환산 (예: 아파트 10층 높이, 25톤 트럭 368만 대분)\n"
+        "   - 사람의 행동 묘사 (\"건설사들은 계산기를 두드려보고 전부 손을 들었습니다\")\n"
+        "   - 긴 문장(25~35자) 뒤 3~8자 짧은 문장으로 때리기 (\"유찰이었습니다.\", \"불가능했습니다.\")\n"
+    )
+
     for cs in range(1, num_scenes + 1, CHUNK_SIZE):
         ce = min(cs + CHUNK_SIZE - 1, num_scenes)
         part_note = f"이번 요청에서는 **씬 {cs}~{ce}만** 작성하세요 (전체 {num_scenes}씬 중)." if num_scenes > CHUNK_SIZE else ""
         cont = f"\n[바로 앞 씬({cs-1})의 나레이션 — 자연스럽게 이어서]\n\"{prev_tail}\"\n" if prev_tail else ""
-        prompt = (
-            f"영상 제목은 \"{meta['recommended']['title']}\"입니다. 이 영상을 **{secs}초 씬 {num_scenes}개**(총 {num_scenes * secs}초, 약 {num_scenes * secs // 60}분)로 제작합니다.\n"
-            f"각 씬 {secs}초 동안 나레이터가 자연스럽게 읽을 한국어 나레이션을 작성해주세요. {part_note}\n\n"
-            f"[벤치마크 영상의 말투·구조 참고]\n{knowledge[:2500]}\n\n"
-            f"[주제] \"{topic}\"\n\n[5단계 플롯 배분 — 반드시 이 구간대로]\n{stage_lines}\n{cont}\n"
-            "규칙:\n"
-            f"- scene_num은 {cs}부터 {ce}까지 빠짐없이\n"
-            f"- narration은 {lo}~{hi}자 {sent_hint} ({secs}초 안에 읽혀야 함). {hi + 5}자를 넘기지 말 것\n"
-            "- 앞 씬과 자연스럽게 이어지고, 구체적 수치·대비·질문으로 리텐션을 유지\n"
-            "- 사실이 아닌 수치를 지어내지 말 것. 불확실하면 '약', '추정'으로 표현\n\n"
-            "반드시 아래 형식의 JSON 하나만 출력하세요:\n" + schema
-        )
+        if is_shorts_script:
+            prompt = (
+                f"영상 제목은 \"{meta['recommended']['title']}\"입니다. 이 영상을 **{secs}초 씬 {num_scenes}개**(총 {num_scenes * secs}초)의 100만 조회 지식 쇼츠로 제작합니다.\n"
+                f"각 씬 {secs}초 동안 나레이터가 자연스럽게 읽을 한국어 나레이션을 작성해주세요. {part_note}\n\n"
+                f"{shorts_formula}\n"
+                f"[주제] \"{topic}\"\n\n[구간 배분 계획]\n{stage_lines}\n{cont}\n"
+                "규칙:\n"
+                f"- scene_num은 {cs}부터 {ce}까지 빠짐없이\n"
+                f"- [글자 수 절대 원칙]: 각 씬 나레이션은 {secs}초 동안 오디오 공백 없이 꽉 차게 낭독되도록, 공백 포함 반드시 {lo}~{hi}자 (목표: 약 {(lo + hi) // 2}자)를 엄격히 지키세요. 단문 1개로 55자 미만이 되는 것은 절대 금지이며, 반드시 1~2문장을 결합하거나 구체적 묘사·수치를 덧붙여 {lo}~{hi}자를 채우세요.\n"
+                "- 100만 조회 대본 공식의 오프닝 2단, 반전 선언, '진짜 문제는', 시청자 질문('그럼 ~하면 되지 않냐고요?'), 감정 삽입구('정말 환장할 노릇이죠.'), 전환점('그래서 발상을 뒤집습니다.'), 별칭 종결을 해당 씬에 반드시 배치하세요.\n"
+                "- 앞 씬과 자연스럽게 이어지고, 구체적 수치는 일상 사물(아파트 N층, 트럭 N대 등)로 환산하세요.\n\n"
+                "반드시 아래 형식의 JSON 하나만 출력하세요:\n" + schema
+            )
+        else:
+            prompt = (
+                f"영상 제목은 \"{meta['recommended']['title']}\"입니다. 이 영상을 **{secs}초 씬 {num_scenes}개**(총 {num_scenes * secs}초, 약 {num_scenes * secs // 60}분)로 제작합니다.\n"
+                f"각 씬 {secs}초 동안 나레이터가 자연스럽게 읽을 한국어 나레이션을 작성해주세요. {part_note}\n\n"
+                f"[벤치마크 영상의 말투·구조 참고]\n{knowledge[:2500]}\n\n"
+                f"[주제] \"{topic}\"\n\n[5단계 플롯 배분 — 반드시 이 구간대로]\n{stage_lines}\n{cont}\n"
+                "규칙:\n"
+                f"- scene_num은 {cs}부터 {ce}까지 빠짐없이\n"
+                f"- [글자 수 절대 원칙]: 각 씬 나레이션은 {secs}초 동안 오디오 공백 없이 꽉 차게 낭독되도록, 공백 포함 반드시 {lo}~{hi}자 (목표: 약 {(lo + hi) // 2}자)를 엄격히 지키세요. 단문 1개로 55자 미만이 되는 것은 절대 금지이며, 반드시 1~2문장을 결합하거나 구체적 묘사·수치를 덧붙여 {lo}~{hi}자를 채우세요.\n"
+                "- 앞 씬과 자연스럽게 이어지고, 구체적 수치·대비·질문으로 리텐션을 유지\n"
+                "- 사실이 아닌 수치를 지어내지 말 것. 불확실하면 '약', '추정'으로 표현\n\n"
+                "반드시 아래 형식의 JSON 하나만 출력하세요:\n" + schema
+            )
         data, raw = _llm_json([{"role": "user", "content": prompt}], max_tokens=4096)
         raws.append(raw)
         part = _sanitize_scenes(data, ce - cs + 1, plan, offset=cs - 1, secs=secs)
@@ -668,17 +736,23 @@ def step_proofread(scenes):
 
 # ── 3단계: AI 영상 프롬프트 ─────────────────────────────────────────────
 
-def step_video_prompts(topic, scenes, aspect_ratio):
-    if len(scenes) > CHUNK_SIZE:
+def step_video_prompts(topic, scenes, aspect_ratio, style_guide=None):
+    is_ks = style_guide in ("지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md")
+    # 지식쇼츠는 프롬프트 상세 블록이 매우 방대하므로 1씬 단위로 분할 호출하여 4096 토큰 잘림 및 문법 에러 원천 차단
+    chunk_sz = 1 if is_ks else CHUNK_SIZE
+    if len(scenes) > chunk_sz:
         raws = []
-        for cs in range(0, len(scenes), CHUNK_SIZE):
-            _, raw = _step_video_prompts_chunk(topic, scenes[cs:cs + CHUNK_SIZE], aspect_ratio)
+        for cs in range(0, len(scenes), chunk_sz):
+            _, raw = _step_video_prompts_chunk(topic, scenes[cs:cs + chunk_sz], aspect_ratio, style_guide=style_guide)
             raws.append(raw)
         return scenes, "\n\n".join(raws)
-    return _step_video_prompts_chunk(topic, scenes, aspect_ratio)
+    return _step_video_prompts_chunk(topic, scenes, aspect_ratio, style_guide=style_guide)
 
 
-def _step_video_prompts_chunk(topic, scenes, aspect_ratio):
+def _step_video_prompts_chunk(topic, scenes, aspect_ratio, style_guide=None):
+    if style_guide in ("지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md"):
+        return _step_video_prompts_knowledge_shorts_chunk(topic, scenes, aspect_ratio)
+
     scene_text = "\n".join(f"- Scene {s['scene_num']} [{s['stage']}]: \"{s['subtitle']}\"" for s in scenes)
     ar_guide = ("vertical 9:16 composition, subject centered on the vertical axis, leave headroom for on-screen captions"
                 if aspect_ratio == "9:16" else "wide 16:9 cinematic composition")
@@ -718,6 +792,112 @@ def _step_video_prompts_chunk(topic, scenes, aspect_ratio):
     for s in scenes:
         item = by_num.get(s["scene_num"]) or {}
         _apply_prompt(s, item, topic, aspect_ratio)
+    return scenes, raw
+
+
+def _step_video_prompts_knowledge_shorts_chunk(topic, scenes, aspect_ratio):
+    """docs/2. knowledge-shorts-prompts-SKILL.md (v2.1) 규칙에 따른 완성형 T2V 프롬프트 조립."""
+    target_num = scenes[0]["scene_num"] if scenes else 1
+    target_secs = scenes[0].get("seconds", 8) if scenes else 8
+    scene_text = "\n".join(f"- Scene {s['scene_num']} [{s['stage']}]: \"{s['subtitle']}\"" for s in scenes)
+    ar_str = "9:16 vertical" if aspect_ratio == "9:16" else f"{aspect_ratio} wide"
+
+    prompt = (
+        f"당신은 지식 쇼츠 T2V 프롬프트 디렉터입니다. docs/2. knowledge-shorts-prompts-SKILL.md (v2.1) 규칙에 따라, "
+        f"주제 \"{topic}\"의 {target_secs}초 씬 {len(scenes)}개에 대해 AI 비디오 생성기(Kling, Runway Gen-3, Sora, Luma)에 "
+        "각 씬마다 독립적으로 바로 붙여넣을 수 있는 완성형 영문 프롬프트(prompt_en)를 작성해주세요.\n\n"
+        f"[씬별 나레이션 대본]\n{scene_text}\n\n"
+        "【docs/2. knowledge-shorts-prompts-SKILL.md 절대 규칙 (반드시 준수)】\n"
+        "1. SUBJECT 전문 매 씬 반복 (최종 산출물에서도 예외 없음):\n"
+        "   - 각 씬의 prompt_en 코드블럭 안에 구체적인 명사로 작성된 대상 서술 전문을 통째로 다시 쓰세요.\n"
+        "   - '위와 동일', '동일 대상', '[반복]' 같은 참조/생략 표현은 절대 금지입니다.\n"
+        "2. 자막·캡션 절대 생성 금지 (EXCLUSIONS 필수):\n"
+        "   - FORMAT 줄에 반드시 'Keep the bottom 18% of frame visually clear for subtitles added later.' 포함\n"
+        "   - EXCLUSIONS에 반드시 'no subtitles, no caption bar, no bottom text overlay, no burned-in captions, no karaoke-style word-by-word timing' 포함\n"
+        f"3. {target_secs}.0초 전체 사용 (정지 구간 없음):\n"
+        "   - 기본 3샷 (0.0s–2.5s / 2.5s–5.0s / 5.0s–8.0s) 또는 2샷 (0.0s–4.0s / 4.0s–8.0s)으로 분할\n"
+        "   - 각 샷에 하나의 명확한 사건(동사 하나)을 배정\n"
+        f"   - 마지막 샷 끝에 반드시: 'Continue meaningful motion through the final second; do not begin a new action after {target_secs - 0.3:.1f}s. The final visual statement lands precisely at {target_secs}.0s.' 포함\n"
+        "4. LOOK 로테이션 (하드 컷 기준 변경):\n"
+        "   - LOOK A: photoreal aerial drone cinematography, hazy natural daylight, muted colors\n"
+        "   - LOOK B: untextured matte grey clay render, featureless white mannequin figures with no faces, soft even studio light, no color anywhere except the red graphics\n"
+        "   - LOOK C: clean technical cutaway, isometric, matte materials, plain pale background\n"
+        "   - LOOK D: pure black background, thin luminous white lines, high contrast (눈에 보이지 않는 힘/압력 전용)\n"
+        "5. RED GRAPHICS (순수 빨강 벡터 스트로크, pure saturated red):\n"
+        "   - 1~2개 요소: red label box with white Korean text 「핵심단어」 via draw-on, red dimension line 등\n"
+        "   - 마지막에 항상 'All Korean text is bold clean sans-serif, crisp and fully legible.' 포함\n"
+        "6. CONTINUITY: 구조물 형태·재질·색상 동일성 선언 및 불필요 왜곡 금지\n"
+        "7. AUDIO: 각 샷의 사실적인 환경음과 사건 효과음 (no speech, no music)\n\n"
+        "【각 씬 prompt_en 완성형 블록 예시】\n"
+        f"FORMAT: {target_secs} seconds, {ar_str}, 24 fps, one continuous generation containing 3 shots joined by clean hard cuts. Use the full {target_secs}.0 seconds with continuous meaningful visual action — no static hold, no dead time, no unused ending. Keep the bottom 18% of frame visually clear for subtitles added later.\n\n"
+        "CLIP STRUCTURE: A compact visual story following Structure B (Overall -> Interior -> Core). Each shot contains exactly one principal event and one clearly directed camera move. Every event begins immediately at the start of its assigned shot and reaches a visually complete state before the next hard cut.\n\n"
+        f"SUBJECT: Detailed architectural scale model diorama illustrating {topic}, matte grey concrete textures, layered geological cutaway strata, miniature faceless white mannequin figures in protective suits.\n\n"
+        "SHOT ONE (0.0s–2.5s):\n"
+        "LOOK: photoreal aerial drone cinematography, hazy natural daylight, muted colors\n"
+        "Event: Aerial drone slowly descends toward the facility entrance embedded in the hillside.\n"
+        "Camera: Slow push-in, keeping the target centered.\n"
+        "The event reaches a complete visual state by 2.5s.\n\n"
+        "SHOT TWO (2.5s–5.0s): Hard cut.\n"
+        "LOOK: clean technical cutaway, isometric, matte materials, plain pale background\n"
+        "Event: 3D cutaway reveals subterranean shaft and concrete chambers.\n"
+        "Camera: Downward tracking move along the central shaft.\n"
+        "The event reaches a complete visual state by 5.0s.\n\n"
+        "SHOT THREE (5.0s–8.0s): Hard cut.\n"
+        "LOOK: untextured matte grey clay render, featureless white mannequin figures with no faces, soft even studio light, no color anywhere except the red graphics\n"
+        "Event: Internal control node activates with glowing consoles.\n"
+        "Camera: Smooth push-in ending on the core monitor. Continue meaningful motion through the final second; do not begin a new action after 7.7s. The final visual statement lands precisely at 8.0s.\n\n"
+        "RED GRAPHICS (sharp vector-like strokes, pure saturated red):\n"
+        f"  - SHOT 2, 3.2s: red label box with white Korean text 「핵심 구조」 appears via draw-on\n"
+        "  - SHOT 2, 4.0s: long red arrow with a distance bracket: draws itself\n"
+        "  All Korean text is bold clean sans-serif, crisp and fully legible.\n\n"
+        "MOTION GRAPHICS: none\n\n"
+        "CONTINUITY: Consistent matte grey concrete texture and architectural scale across shots. Hard cuts change scale and look; no duplicated equipment or spontaneous geometry changes.\n\n"
+        "EXCLUSIONS: no subtitles, no caption bar, no bottom text overlay, no burned-in captions, no karaoke-style word-by-word timing, no logos, no watermark, no lens flare, no film grain, no vignette, no distorted structures, no invented landmarks, no duplicated objects, no recognisable faces, no corrupted Korean text, no dissolve, no morph, no empty ending, no static hold, no background music, no speech or generated narration.\n\n"
+        "AUDIO: Deep mechanical ventilation hum, hydraulic valve hiss, electronic clicks. Audio changes sharply with each hard cut and contains no speech or music.\n\n"
+        "규칙: 각 씬의 prompt_en 필드에 위 전체 조립 블록을 줄바꿈(\\n)을 포함한 완전한 단일 문자열로 작성하세요.\n"
+        "반드시 아래 JSON 형식 하나만 출력하세요:\n"
+        '{\n  "scenes": [\n'
+        '    {\n'
+        f'      "scene_num": {target_num},\n'
+        '      "prompt_en": "FORMAT: ...",\n'
+        '      "visual_prompt": "SUBJECT and shot summary (English, 40-70 words)",\n'
+        '      "camera": "Camera movements (English)",\n'
+        '      "lighting": "Lighting description (English)",\n'
+        '      "sfx": "Audio sound effects & ambience only (English)",\n'
+        '      "guide_ko": "한국어 비주얼·효과음 연출 가이드 한 줄"\n'
+        '    }\n'
+        '  ]\n}'
+    )
+    data, raw = _llm_json([{"role": "user", "content": prompt}], max_tokens=4096)
+    by_num = {}
+    if isinstance(data, dict) and isinstance(data.get("scenes"), list):
+        items = [it for it in data["scenes"] if isinstance(it, dict)]
+        for idx, item in enumerate(items, 1):
+            try:
+                by_num[int(item.get("scene_num") or idx)] = item
+            except Exception:
+                by_num[idx] = item
+        expected = [s["scene_num"] for s in scenes]
+        if len(scenes) == 1 and items:
+            by_num = {scenes[0]["scene_num"]: items[0]}
+        elif not any(n in by_num for n in expected) and len(items) >= len(expected) * 0.5:
+            by_num = {expected[i]: items[i] for i in range(min(len(expected), len(items)))}
+
+    for s in scenes:
+        item = by_num.get(s["scene_num"]) or {}
+        if item.get("prompt_en") and len(str(item["prompt_en"])) > 100:
+            prompt_en = str(item["prompt_en"]).strip()
+            visual = str(item.get("visual_prompt") or f"{topic} diorama scene {s['scene_num']}").strip()
+            camera = str(item.get("camera") or "Smooth cinematic tracking").strip()
+            lighting = str(item.get("lighting") or "Soft studio light").strip()
+            sfx = _strip_audio_negations(str(item.get("sfx") or "")) or "ambient mechanical hum"
+            guide = str(item.get("guide_ko") or "").strip()
+            s.update({
+                "visual_prompt": visual, "camera": camera, "lighting": lighting, "sfx": sfx, "guide_ko": guide,
+                "prompt_en": prompt_en, "prompt_ok": True,
+            })
+        else:
+            _apply_prompt(s, item, topic, aspect_ratio)
     return scenes, raw
 
 
@@ -1028,14 +1208,14 @@ def generate_video_content(topic, num_scenes=10, aspect_ratio="16:9", reference_
     step("meta", "1/4 제목 후보와 설명란 기획 중...")
     meta, _, meta_raw = step_meta(topic, knowledge)
 
-    step("scenes", f"2/4 {scene_seconds}초 씬 {num_scenes}개 나레이션 대본 작성 중 (총 약 {num_scenes * scene_seconds // 60}분 {num_scenes * scene_seconds % 60}초)...")
-    scenes, scenes_raw = step_scenes(topic, meta, knowledge, num_scenes, plan, secs=scene_seconds)
+    step("scenes", f"2/4 {scene_seconds}초 씬 {num_scenes}개 나레이션 대본 작성 중 (총 약 {num_scenes * scene_seconds // 60}분 {num_scenes * scene_seconds % 60}초)..." + (f" (스킬: {reference_id})" if reference_id in ("쇼츠 스크립트", "shorts-script") else ""))
+    scenes, scenes_raw = step_scenes(topic, meta, knowledge, num_scenes, plan, secs=scene_seconds, reference_id=reference_id)
 
     step("proofread", "2/4 나레이션 오타·맞춤법 교정 중...")
     scenes, proof_raw = step_proofread(scenes)
 
-    step("prompts", f"3/4 씬별 AI 영상 프롬프트 작성 중 ({aspect_ratio})...")
-    scenes, prompts_raw = step_video_prompts(topic, scenes, aspect_ratio)
+    step("prompts", f"3/4 씬별 AI 영상 프롬프트 작성 중 ({aspect_ratio})..." + (f" (스킬: {style_guide})" if style_guide in ("지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md") else ""))
+    scenes, prompts_raw = step_video_prompts(topic, scenes, aspect_ratio, style_guide=style_guide)
 
     guide_text = load_style_guide(style_guide)
     step("redline", "4/4 썸네일·첫 프레임 레드라인 이미지 프롬프트 설계 중..." + (f" (가이드: {style_guide})" if guide_text else ""))

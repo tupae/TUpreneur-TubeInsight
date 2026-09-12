@@ -162,6 +162,23 @@ def run_analysis(url, force=False):
     return vid, work
 
 
+def _is_shorts_plan(plan_or_params):
+    """기획서 또는 파라미터가 쇼츠 형식인지 판별 (9:16 비율, 쇼츠 스크립트/지식쇼츠, 또는 7씬×8초 등 약 1분 쇼츠 프리셋)."""
+    if not plan_or_params:
+        return False
+    aspect = str(plan_or_params.get("aspect_ratio") or "")
+    ref = str(plan_or_params.get("reference_id") or "")
+    style = str(plan_or_params.get("style_guide") or "")
+    scenes = int(plan_or_params.get("num_scenes") or plan_or_params.get("scenes") or (len(plan_or_params.get("structured_scenes") or []) if isinstance(plan_or_params.get("structured_scenes"), list) else 0))
+    secs = int(plan_or_params.get("scene_seconds") or 8)
+
+    if aspect == "9:16" or "쇼츠" in ref or "shorts" in ref.lower() or "쇼츠" in style:
+        return True
+    if secs <= 8 and (scenes == 7 or (scenes > 0 and scenes * secs <= 60)):
+        return True
+    return False
+
+
 def run_generation(params):
     topic = params["topic"]
     num_scenes = int(params.get("scenes") or 10)
@@ -169,18 +186,22 @@ def run_generation(params):
     aspect_ratio = params.get("aspect_ratio") or "16:9"
     reference_id = params.get("reference_id") or None
     generate_audio = bool(params.get("generate_audio", True))
+    scene_seconds = int(params.get("scene_seconds") or 8)
 
     def work(progress):
         plan = generator.generate_video_content(
             topic, num_scenes=num_scenes, aspect_ratio=aspect_ratio, reference_id=reference_id,
             style_guide=params.get("style_guide") or None,
-            scene_seconds=int(params.get("scene_seconds") or 8), progress_callback=progress
+            scene_seconds=scene_seconds, progress_callback=progress
         )
         if generate_audio:
             progress("audio", "나레이션 오디오 합성 중...")
             try:
+                is_shorts = _is_shorts_plan({**params, "aspect_ratio": aspect_ratio, "reference_id": reference_id, "num_scenes": num_scenes, "scene_seconds": scene_seconds})
+                pause_secs = 0.3 if is_shorts else 0.0
                 plan["audio_data"] = tts_engine.generate_all_scenes_audio(
-                    plan["structured_scenes"], plan["plan_id"], voice_id=voice_id, progress_callback=progress
+                    plan["structured_scenes"], plan["plan_id"], voice_id=voice_id, progress_callback=progress,
+                    pause_seconds=pause_secs
                 )
             except Exception as e:
                 plan["audio_data"] = None
@@ -199,8 +220,14 @@ def run_tts(params):
     if not scenes:
         raise ValueError("씬 데이터가 없습니다.")
 
+    is_shorts = _is_shorts_plan(plan or params)
+    pause_secs = 0.3 if is_shorts else 0.0
+
     def work(progress):
-        audio = tts_engine.generate_all_scenes_audio(scenes, plan_id or "quick", voice_id=voice_id, progress_callback=progress)
+        audio = tts_engine.generate_all_scenes_audio(
+            scenes, plan_id or "quick", voice_id=voice_id, progress_callback=progress,
+            pause_seconds=pause_secs
+        )
         if plan is not None:
             plan["audio_data"] = audio
             plan.pop("audio_error", None)
@@ -226,10 +253,16 @@ def run_scene_edit(params):
     resynth = bool(params.get("resynthesize", True))
     generator.update_scene_subtitle(plan, scene_num, subtitle)
 
+    is_shorts = _is_shorts_plan(plan)
+    pause_secs = 0.3 if is_shorts else 0.0
+
     def work(progress):
         if resynth:
             progress("audio", f"씬 {scene_num} 수정 반영 — 나레이션 재합성 중...", 20)
-            plan["audio_data"] = tts_engine.generate_all_scenes_audio(plan["structured_scenes"], plan["plan_id"], voice_id=voice_id, progress_callback=progress)
+            plan["audio_data"] = tts_engine.generate_all_scenes_audio(
+                plan["structured_scenes"], plan["plan_id"], voice_id=voice_id, progress_callback=progress,
+                pause_seconds=pause_secs
+            )
             plan.pop("audio_error", None)
         generator.save_plan(plan)
         return plan
@@ -249,8 +282,9 @@ def run_videos(params):
     slots = params.get("slots")
     slots = [str(x) for x in slots if str(x).isdigit()] if isinstance(slots, list) else None  # 잘못된 값은 전체 씬으로
     chain = bool(params.get("chain", True))
+    prompt_only = bool(params.get("prompt_only", False))
     skip_existing = bool(params.get("skip_existing", True))
-    return lambda progress: producer.generate_videos(plan, quality=quality, slots=slots, chain=chain, skip_existing=skip_existing, progress=progress)
+    return lambda progress: producer.generate_videos(plan, quality=quality, slots=slots, chain=chain, prompt_only=prompt_only, skip_existing=skip_existing, progress=progress)
 
 
 def run_render(params):
@@ -271,6 +305,7 @@ def run_auto_produce(params):
         "include_videos": bool(params.get("include_videos", False)),
         "quality": params.get("quality") or "360p",
         "chain": bool(params.get("chain", True)),
+        "prompt_only": bool(params.get("prompt_only", False)),
         "subtitle_style": params.get("subtitle_style") or "outline",
         "transition": params.get("transition") or "fade",
         "burn_subtitles": bool(params.get("burn_subtitles", True)),
