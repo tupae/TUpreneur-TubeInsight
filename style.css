@@ -489,6 +489,9 @@ body {
 /* ── 접근성·모션 ── */
 :focus-visible { outline: 2px solid #000; outline-offset: 2px; border-radius: 4px; }
 @media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
 /* ── 알고리즘 최적화 퀵 칩 ── */
 .algo-quick-chip {
   display: inline-flex;
@@ -510,5 +513,137 @@ body {
   color: #0f172a;
   transform: translateY(-1px);
 }
+
+/* ==========================================================================
+   반응형 UX/UI 최적화 (Mobile / Tablet / Laptop)
+   ========================================================================== */
+
+/* 1. 가로 스크롤 방지 및 뷰포트 안전영역 */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* 2. 모바일/태블릿 헤더 가로 스크롤 내비게이션 바 */
+.nav-scroll-wrapper {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.nav-scroll-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 4px;
+  border-radius: 9999px;
+  background: #F3F4F6;
+  border: 1px solid #E5E7EB;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.nav-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* 3. 모바일 터치 타겟 & 버튼 크기 */
+.mode-btn {
+  flex-shrink: 0;
+  touch-action: manipulation;
+  user-select: none;
+}
+@media (max-width: 640px) {
+  .mode-btn {
+    padding: 7px 12px;
+    font-size: 12px;
+  }
+}
+
+/* 4. 상태 알약(Pills) 모바일 컴팩트 뷰 */
+@media (max-width: 640px) {
+  .pill {
+    padding: 4px 8px;
+    font-size: 11px;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* 5. 모바일 폼 입력 자동 줌 방지 (iOS Safari font-size 16px 대응) */
+@media (max-width: 640px) {
+  input[type="text"],
+  input[type="url"],
+  input[type="password"],
+  input[type="datetime-local"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* 6. 모달(Modal) 모바일 바텀시트 변환 */
+@media (max-width: 640px) {
+  .modal {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal-panel {
+    border-radius: 20px 20px 0 0 !important;
+    max-height: 85vh;
+    padding: 20px 16px env(safe-area-inset-bottom, 16px);
+    width: 100% !important;
+    max-width: 100% !important;
+    border-bottom: none;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25);
+  }
+  .modal.open .modal-panel {
+    animation: modal-sheet-up 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+@keyframes modal-sheet-up {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 7. 카드 & 칩 가로 스크롤/래핑 보정 */
+.horizontal-scroll-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+.horizontal-scroll-chips::-webkit-scrollbar {
+  display: none;
+}
+
+/* 8. 태블릿 & 모바일 탭 바 여백 최적화 */
+@media (max-width: 768px) {
+  .tab-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+}
+
+/* 9. 유튜브 썸네일 & 영상 플레이어 모바일 최적화 */
+.aspect-video {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+}
+
+/* 10. 모바일 코드 블록 및 텍스트 래핑 */
+pre, code {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 
 

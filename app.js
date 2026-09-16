@@ -210,7 +210,13 @@ function setMode(mode) {
     const el = $(id);
     if (el) el.style.display = m === mode ? 'block' : 'none'; 
   });
-  document.querySelectorAll('.mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  document.querySelectorAll('.mode-btn').forEach((b) => {
+    const isActive = b.dataset.mode === mode;
+    b.classList.toggle('active', isActive);
+    if (isActive) {
+      try { b.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (e) {}
+    }
+  });
   if (mode === 'channel') {
     loadChannelHistory(); checkChannelYtStatus();
   }
@@ -348,14 +354,20 @@ function fillReferenceSelect() {
   const cur = sel.value || (state.analysis && state.analysis.id);
   const list = (state.history?.analyses || []).filter((a) => a.ai_ok !== false);
   let options = '<option value="">기본 공식 (벤치마크 없음)</option>';
-  options += '<option value="쇼츠 스크립트">쇼츠 스크립트</option>';
+  options += '<option value="건축쇼츠">건축쇼츠</option>';
+  options += '<option value="테크쇼츠">테크쇼츠</option>';
+  options += '<option value="경제쇼츠">경제쇼츠</option>';
   if (list.length > 0) {
     options += list.map((a) => `<option value="${a.id}">${escapeHtml((a.title || a.id).slice(0, 34))}</option>`).join('');
   }
   sel.innerHTML = options;
   if (cur) {
-    if (cur === '쇼츠 스크립트' || cur === 'shorts-script') {
-      sel.value = '쇼츠 스크립트';
+    if (cur === '건축쇼츠' || cur === '쇼츠 스크립트' || cur === 'shorts-script') {
+      sel.value = '건축쇼츠';
+    } else if (cur === '테크쇼츠' || cur === 'tech-shorts') {
+      sel.value = '테크쇼츠';
+    } else if (cur === '경제쇼츠' || cur === 'biz-shorts') {
+      sel.value = '경제쇼츠';
     } else if (list.some((a) => a.id === cur)) {
       sel.value = cur;
     }
@@ -1355,12 +1367,14 @@ async function loadStyleGuides() {
   try {
     const r = await api('/api/knowledge');
     let guides = r.guides || [];
-    if (!guides.some((g) => g.name === '지식쇼츠' || g.name === 'knowledge-shorts')) {
-      guides = [{ name: '지식쇼츠' }, ...guides];
-    }
+    const coreGuides = ['건축쇼츠', '테크쇼츠', '경제쇼츠'];
+    const customGuides = guides.filter((g) => !coreGuides.includes(g.name) && g.name !== '지식쇼츠' && g.name !== 'knowledge-shorts');
+    const combined = [...coreGuides.map((name) => ({ name })), ...customGuides];
     sel.innerHTML = '<option value="">기본 (내장 레드라인 규칙)</option>' +
-      guides.map((g) => `<option value="${escapeHtml(g.name)}">${escapeHtml(g.name.replace(/\.(md|txt)$/i, ''))}</option>`).join('');
-    if (cur === 'knowledge-shorts') sel.value = '지식쇼츠';
+      combined.map((g) => `<option value="${escapeHtml(g.name)}">${escapeHtml(g.name.replace(/\.(md|txt)$/i, ''))}</option>`).join('');
+    if (cur === '지식쇼츠' || cur === 'knowledge-shorts' || cur === '건축쇼츠') sel.value = '건축쇼츠';
+    else if (cur === 'tech-shorts' || cur === '테크쇼츠') sel.value = '테크쇼츠';
+    else if (cur === 'biz-shorts' || cur === '경제쇼츠') sel.value = '경제쇼츠';
     else if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
     else if ([...sel.options].some((o) => o.value === '레드라인.md')) sel.value = '레드라인.md';
   } catch (e) { /* 무시 */ }

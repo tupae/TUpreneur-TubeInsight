@@ -13,8 +13,19 @@ PLANS_DIR = os.path.join(DATA_DIR, "plans")
 ANALYSES_DIR = os.path.join(DATA_DIR, "analyses")
 KNOWLEDGE_DIR = os.path.join(DATA_DIR, "knowledge")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
-SHORTS_SCRIPT_PATH = os.path.join(DOCS_DIR, "1. shorts-script-writer-SKILL.md")
-KNOWLEDGE_SHORTS_PATH = os.path.join(DOCS_DIR, "2. knowledge-shorts-prompts-SKILL.md")
+SHORTS_SCRIPT_DOCS = {
+    "건축쇼츠": os.path.join(DOCS_DIR, "building-shorts-script.md"),
+    "테크쇼츠": os.path.join(DOCS_DIR, "tech-shorts-script.md"),
+    "경제쇼츠": os.path.join(DOCS_DIR, "biz-shorts-script.md"),
+}
+SHORTS_PROMPT_DOCS = {
+    "건축쇼츠": os.path.join(DOCS_DIR, "building-shorts-prompt.md"),
+    "테크쇼츠": os.path.join(DOCS_DIR, "tech-shorts-prompt.md"),
+    "경제쇼츠": os.path.join(DOCS_DIR, "biz-shorts-prompt.md"),
+}
+# 기존 레거시 호환 경로
+SHORTS_SCRIPT_PATH = SHORTS_SCRIPT_DOCS["건축쇼츠"]
+KNOWLEDGE_SHORTS_PATH = SHORTS_PROMPT_DOCS["건축쇼츠"]
 os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
 os.makedirs(PLANS_DIR, exist_ok=True)
 
@@ -98,7 +109,7 @@ def stage_for_scene(plan, i):
 
 
 def safe_name(text, limit=30):
-    return re.sub(r'[\/\\:*?"<>|]', "_", text or "").strip()[:limit] or "plan"
+    return re.sub(r'[\/\\:*?"<>|\'`]', "_", text or "").strip()[:limit] or "plan"
 
 
 def clean_text_for_label(text, limit=16):
@@ -372,8 +383,11 @@ def save_plan(plan):
 def list_style_guides():
     """data/knowledge/ 및 docs/ 의 문서 목록 (② 스타일 가이드 드롭다운용)."""
     items = []
-    if os.path.exists(KNOWLEDGE_SHORTS_PATH):
-        items.append({"name": "지식쇼츠", "chars": os.path.getsize(KNOWLEDGE_SHORTS_PATH)})
+    # 3대 핵심 쇼츠 스타일 가이드
+    for g_name in ("건축쇼츠", "테크쇼츠", "경제쇼츠"):
+        p = SHORTS_PROMPT_DOCS.get(g_name)
+        if p and os.path.exists(p):
+            items.append({"name": g_name, "chars": os.path.getsize(p)})
     for f in sorted(os.listdir(KNOWLEDGE_DIR)):
         if f.lower().endswith((".md", ".txt")):
             path = os.path.join(KNOWLEDGE_DIR, f)
@@ -385,9 +399,21 @@ def load_style_guide(name):
     """스타일 가이드 문서 내용. 없으면 None."""
     if not name:
         return None
-    if name in ("지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md"):
-        if os.path.exists(KNOWLEDGE_SHORTS_PATH):
-            with open(KNOWLEDGE_SHORTS_PATH, encoding="utf-8", errors="ignore") as f:
+    # 3대 쇼츠 프롬프트 가이드 매핑
+    if name in ("건축쇼츠", "지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md"):
+        p = SHORTS_PROMPT_DOCS["건축쇼츠"]
+        if os.path.exists(p):
+            with open(p, encoding="utf-8", errors="ignore") as f:
+                return f.read()
+    elif name in ("테크쇼츠", "tech-shorts", "tech-news-shorts-prompts"):
+        p = SHORTS_PROMPT_DOCS["테크쇼츠"]
+        if os.path.exists(p):
+            with open(p, encoding="utf-8", errors="ignore") as f:
+                return f.read()
+    elif name in ("경제쇼츠", "biz-shorts", "biz-shorts-prompts"):
+        p = SHORTS_PROMPT_DOCS["경제쇼츠"]
+        if os.path.exists(p):
+            with open(p, encoding="utf-8", errors="ignore") as f:
                 return f.read()
     safe = os.path.basename(name)
     path = os.path.join(KNOWLEDGE_DIR, safe)
@@ -401,18 +427,28 @@ def load_style_guide(name):
 
 def load_reference_knowledge(reference_id=None):
     """분석해 둔 영상의 리포트·자막 또는 docs 스킬을 레퍼런스로 사용합니다. 없으면 기본 샘플(난지도 영상)."""
-    if reference_id in ("쇼츠 스크립트", "shorts-script"):
+    # 3대 쇼츠 대본 공식 매핑
+    shorts_key = None
+    if reference_id in ("건축쇼츠", "쇼츠 스크립트", "shorts-script"):
+        shorts_key = "건축쇼츠"
+    elif reference_id in ("테크쇼츠", "tech-shorts"):
+        shorts_key = "테크쇼츠"
+    elif reference_id in ("경제쇼츠", "biz-shorts"):
+        shorts_key = "경제쇼츠"
+
+    if shorts_key:
+        doc_path = SHORTS_SCRIPT_DOCS.get(shorts_key)
         skill_text = ""
-        if os.path.exists(SHORTS_SCRIPT_PATH):
-            with open(SHORTS_SCRIPT_PATH, encoding="utf-8", errors="ignore") as f:
+        if doc_path and os.path.exists(doc_path):
+            with open(doc_path, encoding="utf-8", errors="ignore") as f:
                 skill_text = f.read()
         knowledge = (
-            "[벤치마크/스킬 규칙: 쇼츠 스크립트 (100만 조회 쇼츠 대본 공식)]\n\n"
+            f"[벤치마크/스킬 규칙: {shorts_key} (100만 조회 쇼츠 대본 공식)]\n\n"
             f"{skill_text}"
         )
         return knowledge, {
-            "id": "쇼츠 스크립트",
-            "title": "쇼츠 스크립트",
+            "id": shorts_key,
+            "title": shorts_key,
             "channel": "Skill Document",
             "view_count": 1000000,
         }
@@ -536,43 +572,86 @@ def step_scenes(topic, meta, knowledge, num_scenes, plan, secs=SCENE_SECONDS, re
         "  ]\n}"
     )
     all_scenes, raws, prev_tail = [], [], ""
-    is_shorts_script = (reference_id in ("쇼츠 스크립트", "shorts-script"))
+    shorts_genre = None
+    if reference_id in ("건축쇼츠", "쇼츠 스크립트", "shorts-script"):
+        shorts_genre = "건축쇼츠"
+    elif reference_id in ("테크쇼츠", "tech-shorts"):
+        shorts_genre = "테크쇼츠"
+    elif reference_id in ("경제쇼츠", "biz-shorts"):
+        shorts_genre = "경제쇼츠"
 
-    shorts_formula = (
-        "【100만 조회 대본 공식 (shorts-script-writer) 필수 규칙】\n"
-        "1. 오프닝 2단 (문장 형태 엄격 준수, 각 씬 60~65자 완성):\n"
-        "   - 씬 1 (오프닝 1단): 반드시 \"여기 [장소]에는 [모순]이 있습니다.\" 형식으로 시작하고 대상을 수식하는 문장을 덧붙여 60자 내외로 채우세요. (예: \"여기 서울 한복판에는 강인데 흐르지 않는 거대한 물길이 있습니다. 도심 한가운데 갇힌 채 멈춰선 미스터리죠.\")\n"
-        "   - 씬 2 (오프닝 2단): 반드시 \"[친숙한 묘사] 지금의 [이름]이죠.\" 형식으로 정체를 공개하고 일상 사실을 이어붙이세요. (예: \"매일 수만 명이 오가는 지금의 한강공원입니다. 우리가 당연하게 누리던 일상 뒤엔 충격적인 비밀이 숨겨져 있죠.\")\n"
-        "   - 씬 3 (반전 선언): 세 번째 문장에서 충격 반전을 선언하고 구체적 배경을 밝히세요. (예: \"이 물은 저절로 이렇게 된 게 아니라 1986년에 사람이 강제로 가둬서 만든 겁니다. 거대한 수중보가 바닥에 깔려 있죠.\")\n"
-        "2. 전개 및 위기:\n"
-        "   - 첫 문제는 미끼입니다. 문제를 해결하려다 더 큰 난관에 봉착하고, 반드시 \"진짜 문제는 따로 있었습니다.\" 또는 \"진짜 문제는 [핵심 문제]였습니다.\" 문장으로 판을 뒤집으세요.\n"
-        "   - 시청자 대신 질문하기 (핵심 장치): 시청자가 떠올릴 법한 뻔한 해법을 대신 질문하고 즉시 부숩니다. 반드시 \"그럼 [뻔한 해법]하면 되지 않냐고요? [그 순간 벌어지는 일]\" 형태를 1~2회 사용하세요. (예: \"그럼 하구를 아예 막아 버리면 되지 않냐고요? 막는 순간 강물이 갈 곳을 잃고 도심이 침수됩니다.\")\n"
-        "   - 감정 삽입구: 위기 최고조 설명 사이에 반드시 \"정말 환장할 노릇이죠.\" 한 줄을 삽입하세요.\n"
-        "3. 전환점 및 해법:\n"
-        "   - 전환점: 반드시 \"그래서 발상을 뒤집습니다.\" 문장으로 해법을 열고 기상천외한 공법과 구체적 수치를 제시하세요.\n"
-        "4. 종결 공식 (별칭 종결):\n"
-        "   - 마지막 씬: 반드시 \"[한 줄 별칭] [이름]은 이렇게 탄생한 겁니다.\" 형식으로 끝맺으세요. (예: \"산꼭대기의 거대한 물그릇, 천년의 요새 남한산성은 불가능을 뚫고 이렇게 탄생한 겁니다.\")\n"
-        "5. 문장 장치 준수:\n"
-        "   - 모든 수치는 일상 사물로 환산 (예: 아파트 10층 높이, 25톤 트럭 368만 대분)\n"
-        "   - 사람의 행동 묘사 (\"건설사들은 계산기를 두드려보고 전부 손을 들었습니다\")\n"
-        "   - 긴 문장(25~35자) 뒤 3~8자 짧은 문장으로 때리기 (\"유찰이었습니다.\", \"불가능했습니다.\")\n"
-    )
+    if shorts_genre == "건축쇼츠":
+        shorts_formula = (
+            "【100만 조회 건축·인프라 쇼츠 대본 공식 (building-shorts-script) 필수 규칙】\n"
+            "1. 오프닝 2단 (문장 형태 엄격 준수, 각 씬 60~65자 완성):\n"
+            "   - 씬 1 (오프닝 1단): 반드시 \"여기 [장소]에는 [모순]이 있습니다.\" 형식으로 시작하고 대상을 수식하는 문장을 덧붙여 60자 내외로 채우세요. (예: \"여기 서울 한복판에는 강인데 흐르지 않는 거대한 물길이 있습니다. 도심 한가운데 갇힌 채 멈춰선 미스터리죠.\")\n"
+            "   - 씬 2 (오프닝 2단): 반드시 \"[친숙한 묘사] 지금의 [이름]이죠.\" 형식으로 정체를 공개하고 일상 사실을 이어붙이세요. (예: \"매일 수만 명이 오가는 지금의 한강공원입니다. 우리가 당연하게 누리던 일상 뒤엔 충격적인 비밀이 숨겨져 있죠.\")\n"
+            "   - 씬 3 (반전 선언): 세 번째 문장에서 충격 반전을 선언하고 구체적 배경을 밝히세요. (예: \"이 물은 저절로 이렇게 된 게 아니라 1986년에 사람이 강제로 가둬서 만든 겁니다. 거대한 수중보가 바닥에 깔려 있죠.\")\n"
+            "2. 전개 및 위기:\n"
+            "   - 첫 문제는 미끼입니다. 문제를 해결하려다 더 큰 난관에 봉착하고, 반드시 \"진짜 문제는 따로 있었습니다.\" 또는 \"진짜 문제는 [핵심 문제]였습니다.\" 문장으로 판을 뒤집으세요.\n"
+            "   - 시청자 대신 질문하기 (핵심 장치): 시청자가 떠올릴 법한 뻔한 해법을 대신 질문하고 즉시 부숩니다. 반드시 \"그럼 [뻔한 해법]하면 되지 않냐고요? [그 순간 벌어지는 일]\" 형태를 1~2회 사용하세요. (예: \"그럼 하구를 아예 막아 버리면 되지 않냐고요? 막는 순간 강물이 갈 곳을 잃고 도심이 침수됩니다.\")\n"
+            "   - 감정 삽입구: 위기 최고조 설명 사이에 반드시 \"정말 환장할 노릇이죠.\" 한 줄을 삽입하세요.\n"
+            "3. 전환점 및 해법:\n"
+            "   - 전환점: 반드시 \"그래서 발상을 뒤집습니다.\" 문장으로 해법을 열고 기상천외한 공법과 구체적 수치를 제시하세요.\n"
+            "4. 종결 공식 (별칭 종결):\n"
+            "   - 마지막 씬: 반드시 \"[한 줄 별칭] [이름]은 이렇게 탄생한 겁니다.\" 형식으로 끝맺으세요. (예: \"산꼭대기의 거대한 물그릇, 천년의 요새 남한산성은 불가능을 뚫고 이렇게 탄생한 겁니다.\")\n"
+            "5. 문장 장치 준수:\n"
+            "   - 모든 수치는 일상 사물로 환산 (예: 아파트 10층 높이, 25톤 트럭 368만 대분)\n"
+            "   - 사람의 행동 묘사 (\"건설사들은 계산기를 두드려보고 전부 손을 들었습니다\")\n"
+            "   - 긴 문장(25~35자) 뒤 3~8자 짧은 문장으로 때리기 (\"유찰이었습니다.\", \"불가능했습니다.\")\n"
+        )
+    elif shorts_genre == "테크쇼츠":
+        shorts_formula = (
+            "【100만 조회 테크·AI 뉴스 쇼츠 대본 공식 (tech-shorts-script) 필수 규칙】\n"
+            "1. 오프닝 2단 (긴급 속보/기대 부수기 훅, 각 씬 60~65자 완성):\n"
+            "   - 씬 1 (오프닝 1단): 반드시 \"지금 [기업/업계]에 제대로 비상이 걸렸습니다.\" (또는 \"지금 [기기명] 사려고 고민 중이시죠?\") 형식으로 시작하세요. (예: \"지금 실리콘밸리에 제대로 비상이 걸렸습니다. AI 생태계가 통째로 뒤흔들리고 있죠.\")\n"
+            "   - 씬 2 (오프닝 2단): 반드시 \"[주어]가 방금 [충격적 기술/정책/비밀]을 기습 공개했기 때문입니다.\" (또는 \"절대 그냥 사면 안 되는 이유가 있습니다.\") 형식으로 정체를 밝히세요.\n"
+            "   - 씬 3 (충격 수치/격차 투척): 기존 모델 대비 연산 비용 10분의 1, 추론 속도 5배, 7분 만에 스로틀링 등 충격적 실측 팩트를 제시하세요.\n"
+            "2. 전개 및 위기:\n"
+            "   - 업계 패닉 및 치명적 단점 폭로: 기존 유료 SaaS/스타트업 붕괴 위기 또는 제조사의 성능 락(throttling)과 원가절감을 구체적으로 짚으세요.\n"
+            "   - 시청자 반론 차단 (핵심 장치): 반드시 \"그럼 [경쟁사/소비자의 안일한 대처/설정변경]하면 되지 않냐고요? [마주하는 냉혹한 현실/기술격차]\" 형태를 1~2회 사용하세요. (예: \"그럼 경쟁사들도 똑같이 베끼면 되지 않냐고요? 칩셋 확보와 인프라 구축에만 최소 2년, 수조 원이 더 들어갑니다.\")\n"
+            "   - 긴장감 삽입구: 설명 사이에 반드시 \"빅테크 전쟁이 진짜 살벌해진 거죠.\" 또는 \"정말 선 넘은 급나누기죠.\" 한 줄을 삽입하세요.\n"
+            "3. 전환점 및 진짜 노림수:\n"
+            "   - 전환점: 반드시 \"그런데 이들이 노리는 진짜 목적은 따로 있습니다.\" (또는 \"그래서 결론이 뭐냐고요?\") 문장으로 판도를 파헤치세요.\n"
+            "4. 종결 공식 (미래 파장/타깃 명확화):\n"
+            "   - 마지막 씬: 반드시 \"결국 이번 발표가 바꿀 것은 단순한 기술이 아니라, [우리의 일상/직업/미래 판도]입니다.\" (또는 \"딱 [대상]만 사시면 됩니다.\") 형식으로 종결하세요.\n"
+            "5. 문장 장치: 스펙(토큰, 레이턴시, 배터리)을 인간의 노동력/일상 비용으로 환산, IT 전문지식 상투어 금지, 구어체 단문 타격.\n"
+        )
+    elif shorts_genre == "경제쇼츠":
+        shorts_formula = (
+            "【100만 조회 경제·비즈니스 쇼츠 대본 공식 (biz-shorts-script) 필수 규칙】\n"
+            "1. 오프닝 2단 (돈의 상식 뒤집기 훅, 각 씬 60~65자 완성):\n"
+            "   - 씬 1 (오프닝 1단): 반드시 \"우리가 매일 쓰는 [브랜드/제품], 사실 [상식 밖의 모순]이라는 거 알고 계셨나요?\" 형식으로 시작하세요. (예: \"우리가 매일 마시는 스타벅스, 사실 커피를 팔아서 부자가 된 게 아니라는 거 알고 계셨나요?\")\n"
+            "   - 씬 2 (오프닝 2단): 반드시 \"[친숙한 설명], 여긴 [제품명]을 파는 회사가 아닙니다.\" 형식으로 충격적 정체를 드러내세요. (예: \"전 세계 노른자위 땅을 장악한 거대한 부동산 은행입니다.\")\n"
+            "   - 씬 3 (충격적 금액/적자 투척): 매년 버는 돈보다 이자만 2,000억, 단 하루 만에 시총 150조 증발 등 압도적 수치를 던지세요.\n"
+            "2. 전개 및 위기:\n"
+            "   - 흑자도산 위기, 뼈아픈 실책, 팔수록 적자인 비즈니스 모순의 본질을 밝히세요.\n"
+            "   - 시청자 반론 차단 (핵심 장치): 반드시 \"그럼 [일반인의 뻔한 해법: 가격인상/공장증설]하면 되지 않냐고요? [그 순간 기업이 마주한 잔혹한 현실]\" 형태를 1~2회 사용하세요. (예: \"그럼 물건 가격을 올려서 적자를 메꾸면 되지 않냐고요? 가격을 100원 올리는 순간, 손님들은 1초 만에 경쟁사 앱으로 갈아탑니다.\")\n"
+            "   - 감정 삽입구: 설명 사이에 반드시 \"자본주의가 이렇게 냉혹합니다.\" 또는 \"완벽한 돈 낭비였죠.\" 한 줄을 삽입하세요.\n"
+            "3. 전환점 및 승부수:\n"
+            "   - 전환점: 반드시 \"여기서 회장은 판을 완전히 뒤엎습니다.\" (또는 \"그래서 발상을 거꾸로 뒤집습니다.\") 문장으로 진짜 돈벌이 구조를 여세요.\n"
+            "4. 종결 공식 (자본주의 공식 도출):\n"
+            "   - 마지막 씬: 반드시 \"결국 [기업/브랜드]이 판 것은 [원래 제품]이 아니라 [진짜 가치/데이터/부동산]이었습니다.\" 형식으로 끝맺으세요.\n"
+            "5. 문장 장치: 거액을 일상 지출(강남 아파트, 치킨 값, 람보르기니)로 환산, 이사회/CEO의 행동을 사람의 욕망 동사로 묘사, 구어체 단문 배치.\n"
+        )
+    else:
+        shorts_formula = ""
 
     for cs in range(1, num_scenes + 1, CHUNK_SIZE):
         ce = min(cs + CHUNK_SIZE - 1, num_scenes)
         part_note = f"이번 요청에서는 **씬 {cs}~{ce}만** 작성하세요 (전체 {num_scenes}씬 중)." if num_scenes > CHUNK_SIZE else ""
         cont = f"\n[바로 앞 씬({cs-1})의 나레이션 — 자연스럽게 이어서]\n\"{prev_tail}\"\n" if prev_tail else ""
-        if is_shorts_script:
+        if shorts_genre:
             prompt = (
-                f"영상 제목은 \"{meta['recommended']['title']}\"입니다. 이 영상을 **{secs}초 씬 {num_scenes}개**(총 {num_scenes * secs}초)의 100만 조회 지식 쇼츠로 제작합니다.\n"
+                f"영상 제목은 \"{meta['recommended']['title']}\"입니다. 이 영상을 **{secs}초 씬 {num_scenes}개**(총 {num_scenes * secs}초)의 100만 조회 {shorts_genre}로 제작합니다.\n"
                 f"각 씬 {secs}초 동안 나레이터가 자연스럽게 읽을 한국어 나레이션을 작성해주세요. {part_note}\n\n"
                 f"{shorts_formula}\n"
                 f"[주제] \"{topic}\"\n\n[구간 배분 계획]\n{stage_lines}\n{cont}\n"
                 "규칙:\n"
                 f"- scene_num은 {cs}부터 {ce}까지 빠짐없이\n"
                 f"- [글자 수 절대 원칙]: 각 씬 나레이션은 {secs}초 동안 오디오 공백 없이 꽉 차게 낭독되도록, 공백 포함 반드시 {lo}~{hi}자 (목표: 약 {(lo + hi) // 2}자)를 엄격히 지키세요. 단문 1개로 55자 미만이 되는 것은 절대 금지이며, 반드시 1~2문장을 결합하거나 구체적 묘사·수치를 덧붙여 {lo}~{hi}자를 채우세요.\n"
-                "- 100만 조회 대본 공식의 오프닝 2단, 반전 선언, '진짜 문제는', 시청자 질문('그럼 ~하면 되지 않냐고요?'), 감정 삽입구('정말 환장할 노릇이죠.'), 전환점('그래서 발상을 뒤집습니다.'), 별칭 종결을 해당 씬에 반드시 배치하세요.\n"
-                "- 앞 씬과 자연스럽게 이어지고, 구체적 수치는 일상 사물(아파트 N층, 트럭 N대 등)로 환산하세요.\n\n"
+                f"- 100만 조회 {shorts_genre} 대본 공식의 오프닝 2단, 충격 투척, 시청자 질문('그럼 ~하면 되지 않냐고요?'), 감정 삽입구, 전환점, 종결 공식을 해당 씬에 반드시 배치하세요.\n"
+                "- 앞 씬과 자연스럽게 이어지고, 구체적 수치는 일상 사물이나 체감 비유로 환산하세요.\n\n"
                 "반드시 아래 형식의 JSON 하나만 출력하세요:\n" + schema
             )
         else:
@@ -736,10 +815,22 @@ def step_proofread(scenes):
 
 # ── 3단계: AI 영상 프롬프트 ─────────────────────────────────────────────
 
+def _resolve_shorts_style_genre(style_guide):
+    if not style_guide:
+        return None
+    if style_guide in ("건축쇼츠", "지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md"):
+        return "건축쇼츠"
+    elif style_guide in ("테크쇼츠", "tech-shorts", "tech-news-shorts-prompts"):
+        return "테크쇼츠"
+    elif style_guide in ("경제쇼츠", "biz-shorts", "biz-shorts-prompts"):
+        return "경제쇼츠"
+    return None
+
+
 def step_video_prompts(topic, scenes, aspect_ratio, style_guide=None):
-    is_ks = style_guide in ("지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md")
-    # 지식쇼츠는 프롬프트 상세 블록이 매우 방대하므로 1씬 단위로 분할 호출하여 4096 토큰 잘림 및 문법 에러 원천 차단
-    chunk_sz = 1 if is_ks else CHUNK_SIZE
+    genre = _resolve_shorts_style_genre(style_guide)
+    # 쇼츠 스타일 가이드(건축/테크/경제)는 프롬프트 상세 블록이 방대하므로 1씬 단위로 분할 호출하여 4096 토큰 잘림 및 문법 에러 원천 차단
+    chunk_sz = 1 if genre else CHUNK_SIZE
     if len(scenes) > chunk_sz:
         raws = []
         for cs in range(0, len(scenes), chunk_sz):
@@ -750,8 +841,9 @@ def step_video_prompts(topic, scenes, aspect_ratio, style_guide=None):
 
 
 def _step_video_prompts_chunk(topic, scenes, aspect_ratio, style_guide=None):
-    if style_guide in ("지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md"):
-        return _step_video_prompts_knowledge_shorts_chunk(topic, scenes, aspect_ratio)
+    genre = _resolve_shorts_style_genre(style_guide)
+    if genre:
+        return _step_video_prompts_shorts_director_chunk(topic, scenes, aspect_ratio, genre=genre)
 
     scene_text = "\n".join(f"- Scene {s['scene_num']} [{s['stage']}]: \"{s['subtitle']}\"" for s in scenes)
     ar_guide = ("vertical 9:16 composition, subject centered on the vertical axis, leave headroom for on-screen captions"
@@ -783,7 +875,6 @@ def _step_video_prompts_chunk(topic, scenes, aspect_ratio, style_guide=None):
                 by_num[int(item.get("scene_num") or idx)] = item
             except Exception:
                 by_num[idx] = item
-        # 모델이 청크 안에서 1부터 다시 센 경우 → 순서대로 실제 씬 번호에 매핑
         expected = [s["scene_num"] for s in scenes]
         if not any(n in by_num for n in expected) and len(items) >= len(expected) * 0.5:
             by_num = {expected[i]: items[i] for i in range(min(len(expected), len(items)))}
@@ -795,19 +886,70 @@ def _step_video_prompts_chunk(topic, scenes, aspect_ratio, style_guide=None):
     return scenes, raw
 
 
-def _step_video_prompts_knowledge_shorts_chunk(topic, scenes, aspect_ratio):
-    """docs/2. knowledge-shorts-prompts-SKILL.md (v2.1) 규칙에 따른 완성형 T2V 프롬프트 조립."""
+def _step_video_prompts_shorts_director_chunk(topic, scenes, aspect_ratio, genre="건축쇼츠"):
+    """docs/{genre}-shorts-prompt.md 규칙에 따른 완성형 T2V 프롬프트 조립 디렉터."""
     target_num = scenes[0]["scene_num"] if scenes else 1
     target_secs = scenes[0].get("seconds", 8) if scenes else 8
     scene_text = "\n".join(f"- Scene {s['scene_num']} [{s['stage']}]: \"{s['subtitle']}\"" for s in scenes)
     ar_str = "9:16 vertical" if aspect_ratio == "9:16" else f"{aspect_ratio} wide"
 
+    if genre == "테크쇼츠":
+        role_title = "테크·AI 뉴스 쇼츠 T2V 프롬프트 디렉터 (v2.2-tech)"
+        look_rules = (
+            "   - LOOK A: photoreal futuristic commercial tech cinematography, sleek keynote lighting or glowing ultramodern workstation, crisp OLED screen reflections, hyper-detailed glass and metal\n"
+            "   - LOOK B: untextured matte dark grey clay render, featureless stylized white figures in front of glowing monitors, stark rim light, no color anywhere except the red graphics\n"
+            "   - LOOK C: clean isometric technical pipeline, minimalist 3D modular servers, glass datacenter aesthetics, matte materials, high precision\n"
+            "   - LOOK D: pure black background, luminous red and electric white neural network nodes, laser-thin glowing data streams, extreme high contrast"
+        )
+        red_graphics_guide = (
+            "   - 1~2개 요소: sharp red label box with white Korean text 「10배 가속」 via draw-on, "
+            "red horizontal timeline bracket measuring 0.1s latency, huge bold red Korean text 「비상」, "
+            "large red X stroked over deprecated tool, red target ring closing on the chip\n"
+            "   - 마지막에 항상 'All Korean text and technical indicators are bold clean sans-serif, crisp and fully legible.' 포함"
+        )
+        subject_example = f"High-tech developer workstation and glowing enterprise datacenter illustrating {topic}, illuminated server rack LEDs, ultra-detailed glass and brushed aluminum tech hardware, cascading streaming code terminal on vertical OLED display."
+        exclusions_extra = "no distorted fingers or extra fingers on keyboards, no fake watermark,"
+        audio_example = "Mechanical keyboard typing clatter, deep server cooling fan drone, digital processing hum, electronic confirmation beeps."
+    elif genre == "경제쇼츠":
+        role_title = "경제·비즈니스 쇼츠 T2V 프롬프트 디렉터 (v2.2-biz)"
+        look_rules = (
+            "   - LOOK A: photoreal commercial cinematography, sharp corporate daylight or moody boardroom lighting, hyper-realistic textures, clean high-end aesthetic\n"
+            "   - LOOK B: untextured matte grey clay render, featureless white mannequin figures in business suits with no faces, soft studio rim light, no color anywhere except the red graphics\n"
+            "   - LOOK C: clean isometric 3D motion graphic, minimalist vector style, matte pastel materials, plain pale background\n"
+            "   - LOOK D: pure black background, luminous red and white vector lines, high-contrast financial data flow"
+        )
+        red_graphics_guide = (
+            "   - 1~2개 요소: sharp red rectangular label box with white Korean text 「적자 1,200억」 via draw-on, "
+            "thick bold red arrow plunging down vertically at a steep angle with percentage drop indicator, "
+            "vertical red distance bracket measuring price gap with 「+500원」 text, huge bold red text 「부도」, large red X mark\n"
+            "   - 마지막에 항상 'All Korean text and monetary symbols are bold clean sans-serif, crisp and fully legible.' 포함"
+        )
+        subject_example = f"Corporate business headquarters and retail transaction counter illustrating {topic}, piles of financial documents, stacks of currency banknotes, high-contrast stock market digital displays, mannequin figures in sharp business suits."
+        exclusions_extra = "no distorted fingers or hands, no fake watermark,"
+        audio_example = "POS register chime, boardroom ambient murmurs, currency counting machine flutter, financial alert warning tone."
+    else:  # 건축쇼츠
+        role_title = "건축·지식 쇼츠 T2V 프롬프트 디렉터 (v2.1)"
+        look_rules = (
+            "   - LOOK A: photoreal aerial drone cinematography, hazy natural daylight, muted colors\n"
+            "   - LOOK B: untextured matte grey clay render, featureless white mannequin figures with no faces, soft even studio light, no color anywhere except the red graphics\n"
+            "   - LOOK C: clean technical cutaway, isometric, matte materials, plain pale background\n"
+            "   - LOOK D: pure black background, thin luminous white lines, high contrast (눈에 보이지 않는 힘/압력 전용)"
+        )
+        red_graphics_guide = (
+            "   - 1~2개 요소: red label box with white Korean text 「핵심 구조」 via draw-on, red dimension line, "
+            "long red arrow with distance bracket\n"
+            "   - 마지막에 항상 'All Korean text is bold clean sans-serif, crisp and fully legible.' 포함"
+        )
+        subject_example = f"Detailed architectural scale model diorama illustrating {topic}, matte grey concrete textures, layered geological cutaway strata, miniature faceless white mannequin figures in protective suits."
+        exclusions_extra = "no film grain, no vignette, no distorted structures,"
+        audio_example = "Deep mechanical ventilation hum, hydraulic valve hiss, electronic clicks."
+
     prompt = (
-        f"당신은 지식 쇼츠 T2V 프롬프트 디렉터입니다. docs/2. knowledge-shorts-prompts-SKILL.md (v2.1) 규칙에 따라, "
+        f"당신은 {role_title}입니다. docs/{genre} 가이드 규칙에 따라, "
         f"주제 \"{topic}\"의 {target_secs}초 씬 {len(scenes)}개에 대해 AI 비디오 생성기(Kling, Runway Gen-3, Sora, Luma)에 "
         "각 씬마다 독립적으로 바로 붙여넣을 수 있는 완성형 영문 프롬프트(prompt_en)를 작성해주세요.\n\n"
         f"[씬별 나레이션 대본]\n{scene_text}\n\n"
-        "【docs/2. knowledge-shorts-prompts-SKILL.md 절대 규칙 (반드시 준수)】\n"
+        f"【docs/{genre} T2V 절대 규칙 (반드시 준수)】\n"
         "1. SUBJECT 전문 매 씬 반복 (최종 산출물에서도 예외 없음):\n"
         "   - 각 씬의 prompt_en 코드블럭 안에 구체적인 명사로 작성된 대상 서술 전문을 통째로 다시 쓰세요.\n"
         "   - '위와 동일', '동일 대상', '[반복]' 같은 참조/생략 표현은 절대 금지입니다.\n"
@@ -819,41 +961,36 @@ def _step_video_prompts_knowledge_shorts_chunk(topic, scenes, aspect_ratio):
         "   - 각 샷에 하나의 명확한 사건(동사 하나)을 배정\n"
         f"   - 마지막 샷 끝에 반드시: 'Continue meaningful motion through the final second; do not begin a new action after {target_secs - 0.3:.1f}s. The final visual statement lands precisely at {target_secs}.0s.' 포함\n"
         "4. LOOK 로테이션 (하드 컷 기준 변경):\n"
-        "   - LOOK A: photoreal aerial drone cinematography, hazy natural daylight, muted colors\n"
-        "   - LOOK B: untextured matte grey clay render, featureless white mannequin figures with no faces, soft even studio light, no color anywhere except the red graphics\n"
-        "   - LOOK C: clean technical cutaway, isometric, matte materials, plain pale background\n"
-        "   - LOOK D: pure black background, thin luminous white lines, high contrast (눈에 보이지 않는 힘/압력 전용)\n"
+        f"{look_rules}\n"
         "5. RED GRAPHICS (순수 빨강 벡터 스트로크, pure saturated red):\n"
-        "   - 1~2개 요소: red label box with white Korean text 「핵심단어」 via draw-on, red dimension line 등\n"
-        "   - 마지막에 항상 'All Korean text is bold clean sans-serif, crisp and fully legible.' 포함\n"
-        "6. CONTINUITY: 구조물 형태·재질·색상 동일성 선언 및 불필요 왜곡 금지\n"
-        "7. AUDIO: 각 샷의 사실적인 환경음과 사건 효과음 (no speech, no music)\n\n"
+        f"{red_graphics_guide}\n"
+        "6. CONTINUITY: 피사체 형태·재질·색상 동일성 선언 및 불필요 왜곡 금지\n"
+        f"7. AUDIO: 각 샷의 사실적인 환경음과 사건 효과음 ({audio_example}) (no speech, no music)\n\n"
         "【각 씬 prompt_en 완성형 블록 예시】\n"
         f"FORMAT: {target_secs} seconds, {ar_str}, 24 fps, one continuous generation containing 3 shots joined by clean hard cuts. Use the full {target_secs}.0 seconds with continuous meaningful visual action — no static hold, no dead time, no unused ending. Keep the bottom 18% of frame visually clear for subtitles added later.\n\n"
-        "CLIP STRUCTURE: A compact visual story following Structure B (Overall -> Interior -> Core). Each shot contains exactly one principal event and one clearly directed camera move. Every event begins immediately at the start of its assigned shot and reaches a visually complete state before the next hard cut.\n\n"
-        f"SUBJECT: Detailed architectural scale model diorama illustrating {topic}, matte grey concrete textures, layered geological cutaway strata, miniature faceless white mannequin figures in protective suits.\n\n"
+        "CLIP STRUCTURE: A compact visual story. Each shot contains exactly one principal event and one clearly directed camera move. Every event begins immediately at the start of its assigned shot and reaches a visually complete state before the next hard cut.\n\n"
+        f"SUBJECT: {subject_example}\n\n"
         "SHOT ONE (0.0s–2.5s):\n"
-        "LOOK: photoreal aerial drone cinematography, hazy natural daylight, muted colors\n"
-        "Event: Aerial drone slowly descends toward the facility entrance embedded in the hillside.\n"
+        "LOOK: [LOOK A/B/C/D 중 1개]\n"
+        "Event: First principal event developing clearly.\n"
         "Camera: Slow push-in, keeping the target centered.\n"
         "The event reaches a complete visual state by 2.5s.\n\n"
         "SHOT TWO (2.5s–5.0s): Hard cut.\n"
-        "LOOK: clean technical cutaway, isometric, matte materials, plain pale background\n"
-        "Event: 3D cutaway reveals subterranean shaft and concrete chambers.\n"
-        "Camera: Downward tracking move along the central shaft.\n"
+        "LOOK: [직전과 다른 LOOK A/B/C/D 중 1개]\n"
+        "Event: Second principal event unfolding.\n"
+        "Camera: Downward tracking or dynamic sweep move.\n"
         "The event reaches a complete visual state by 5.0s.\n\n"
         "SHOT THREE (5.0s–8.0s): Hard cut.\n"
-        "LOOK: untextured matte grey clay render, featureless white mannequin figures with no faces, soft even studio light, no color anywhere except the red graphics\n"
-        "Event: Internal control node activates with glowing consoles.\n"
-        "Camera: Smooth push-in ending on the core monitor. Continue meaningful motion through the final second; do not begin a new action after 7.7s. The final visual statement lands precisely at 8.0s.\n\n"
+        "LOOK: [LOOK A/B/C/D 중 1개]\n"
+        "Event: Final concluding event landing decisively.\n"
+        f"Camera: Smooth push-in. Continue meaningful motion through the final second; do not begin a new action after {target_secs - 0.3:.1f}s. The final visual statement lands precisely at {target_secs}.0s.\n\n"
         "RED GRAPHICS (sharp vector-like strokes, pure saturated red):\n"
-        f"  - SHOT 2, 3.2s: red label box with white Korean text 「핵심 구조」 appears via draw-on\n"
-        "  - SHOT 2, 4.0s: long red arrow with a distance bracket: draws itself\n"
-        "  All Korean text is bold clean sans-serif, crisp and fully legible.\n\n"
+        "  - SHOT 2, 3.2s: red label graphic appears via draw-on\n"
+        "  All Korean text and symbols are bold clean sans-serif, crisp and fully legible.\n\n"
         "MOTION GRAPHICS: none\n\n"
-        "CONTINUITY: Consistent matte grey concrete texture and architectural scale across shots. Hard cuts change scale and look; no duplicated equipment or spontaneous geometry changes.\n\n"
-        "EXCLUSIONS: no subtitles, no caption bar, no bottom text overlay, no burned-in captions, no karaoke-style word-by-word timing, no logos, no watermark, no lens flare, no film grain, no vignette, no distorted structures, no invented landmarks, no duplicated objects, no recognisable faces, no corrupted Korean text, no dissolve, no morph, no empty ending, no static hold, no background music, no speech or generated narration.\n\n"
-        "AUDIO: Deep mechanical ventilation hum, hydraulic valve hiss, electronic clicks. Audio changes sharply with each hard cut and contains no speech or music.\n\n"
+        "CONTINUITY: Consistent visual identity and scale across shots. Hard cuts change scale and look; no duplicated props or spontaneous morphing within a single shot.\n\n"
+        f"EXCLUSIONS: no subtitles, no caption bar, no bottom text overlay, no burned-in captions, no karaoke-style word-by-word timing, no logos, no watermark, {exclusions_extra} no duplicated objects, no recognisable celebrity faces, no corrupted Korean text, no dissolve, no morph, no empty ending, no static hold, no background music, no speech or generated narration.\n\n"
+        f"AUDIO: {audio_example}. Audio changes sharply with each hard cut and contains no speech or music.\n\n"
         "규칙: 각 씬의 prompt_en 필드에 위 전체 조립 블록을 줄바꿈(\\n)을 포함한 완전한 단일 문자열로 작성하세요.\n"
         "반드시 아래 JSON 형식 하나만 출력하세요:\n"
         '{\n  "scenes": [\n'
@@ -887,7 +1024,7 @@ def _step_video_prompts_knowledge_shorts_chunk(topic, scenes, aspect_ratio):
         item = by_num.get(s["scene_num"]) or {}
         if item.get("prompt_en") and len(str(item["prompt_en"])) > 100:
             prompt_en = str(item["prompt_en"]).strip()
-            visual = str(item.get("visual_prompt") or f"{topic} diorama scene {s['scene_num']}").strip()
+            visual = str(item.get("visual_prompt") or f"{topic} {genre} scene {s['scene_num']}").strip()
             camera = str(item.get("camera") or "Smooth cinematic tracking").strip()
             lighting = str(item.get("lighting") or "Soft studio light").strip()
             sfx = _strip_audio_negations(str(item.get("sfx") or "")) or "ambient mechanical hum"
@@ -1208,13 +1345,13 @@ def generate_video_content(topic, num_scenes=10, aspect_ratio="16:9", reference_
     step("meta", "1/4 제목 후보와 설명란 기획 중...")
     meta, _, meta_raw = step_meta(topic, knowledge)
 
-    step("scenes", f"2/4 {scene_seconds}초 씬 {num_scenes}개 나레이션 대본 작성 중 (총 약 {num_scenes * scene_seconds // 60}분 {num_scenes * scene_seconds % 60}초)..." + (f" (스킬: {reference_id})" if reference_id in ("쇼츠 스크립트", "shorts-script") else ""))
+    step("scenes", f"2/4 {scene_seconds}초 씬 {num_scenes}개 나레이션 대본 작성 중 (총 약 {num_scenes * scene_seconds // 60}분 {num_scenes * scene_seconds % 60}초)..." + (f" (스킬: {reference_id})" if reference_id in ("건축쇼츠", "테크쇼츠", "경제쇼츠", "쇼츠 스크립트", "shorts-script", "tech-shorts", "biz-shorts") else ""))
     scenes, scenes_raw = step_scenes(topic, meta, knowledge, num_scenes, plan, secs=scene_seconds, reference_id=reference_id)
 
     step("proofread", "2/4 나레이션 오타·맞춤법 교정 중...")
     scenes, proof_raw = step_proofread(scenes)
 
-    step("prompts", f"3/4 씬별 AI 영상 프롬프트 작성 중 ({aspect_ratio})..." + (f" (스킬: {style_guide})" if style_guide in ("지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md") else ""))
+    step("prompts", f"3/4 씬별 AI 영상 프롬프트 작성 중 ({aspect_ratio})..." + (f" (스킬: {style_guide})" if style_guide in ("건축쇼츠", "테크쇼츠", "경제쇼츠", "지식쇼츠", "knowledge-shorts", "2. knowledge-shorts-prompts-SKILL.md", "tech-shorts", "biz-shorts") else ""))
     scenes, prompts_raw = step_video_prompts(topic, scenes, aspect_ratio, style_guide=style_guide)
 
     guide_text = load_style_guide(style_guide)

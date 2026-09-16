@@ -214,11 +214,21 @@ def estimate_costs(num_scenes, quality="360p"):
 # ── 씬 미디어 관리 ────────────────────────────────────────────────────────
 
 def _safe(plan_id):
-    return re.sub(r'[\/\\:*?"<>|]', "_", plan_id or "")[:80] or "plan"
+    return re.sub(r'[\/\\:*?"<>|\'`]', "_", plan_id or "")[:80] or "plan"
 
 
 def render_dir(plan_id):
-    d = os.path.join(RENDERS_DIR, _safe(plan_id))
+    safe_id = _safe(plan_id)
+    d = os.path.join(RENDERS_DIR, safe_id)
+    if not os.path.exists(d):
+        # 레거시 폴더 호환 (이전에 따옴표 등이 포함된 채 생성된 폴더가 있다면 자동 이동 또는 해당 경로 유지)
+        legacy_safe = re.sub(r'[\/\\:*?"<>|]', "_", plan_id or "")[:80] or "plan"
+        legacy_d = os.path.join(RENDERS_DIR, legacy_safe)
+        if os.path.exists(legacy_d) and legacy_d != d:
+            try:
+                os.rename(legacy_d, d)
+            except Exception:
+                return legacy_d
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -1243,6 +1253,10 @@ def _timed_subtitle_filters(sub_specs, durations, fade_d, font, W, H, font_size,
     filters = []
     start = 0.0
     big_size = int(font_size * 1.3)
+    # ffmpeg filter_complex 인자용: 따옴표나 특수문자 없는 안전한 임시 디렉토리
+    safe_sub_dir = os.path.join(DATA_DIR, ".sub_tmp")
+    os.makedirs(safe_sub_dir, exist_ok=True)
+
     for k, (spec, dur) in enumerate(zip(sub_specs, durations)):
         end = start + dur
         if spec and spec.get("phrases"):
@@ -1258,8 +1272,11 @@ def _timed_subtitle_filters(sub_specs, durations, fade_d, font, W, H, font_size,
                 tf = os.path.join(work, f"sub_{spec['num']:02d}_{pi:02d}.txt")
                 with open(tf, "w", encoding="utf-8") as f:
                     f.write(ph)
+                tf_safe = os.path.join(safe_sub_dir, f"sub_{spec['num']:02d}_{pi:02d}.txt")
+                with open(tf_safe, "w", encoding="utf-8") as f:
+                    f.write(ph)
                 enable = f":enable='between(t,{a:.3f},{b:.3f})'"
-                filters += [flt + enable for flt in _subtitle_filters(tf, font, W, H, big_size, 1, style)]
+                filters += [flt + enable for flt in _subtitle_filters(tf_safe, font, W, H, big_size, 1, style)]
                 t = b
         start = end - fade_d
     return filters

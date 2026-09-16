@@ -22,6 +22,7 @@ data/analyses/*
 !data/analyses/dQw4w9WgXcQ.json
 settings.json
 data/settings.json
+data/.sub_tmp/
 
 # 임시 다운로드 자막 및 리포트 파일
 *.vtt
