@@ -24,7 +24,6 @@ import threads_client
 import twitter_client
 
 APP_VERSION = "0.4.0"
-PORT = int(os.environ.get("TUBEINSIGHT_PORT", "8989"))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 ENV_FILE = os.path.join(BASE_DIR, ".env")
@@ -34,10 +33,16 @@ MAX_BODY_BYTES = 40 * 1024 * 1024  # 음성/미디어 업로드(base64) 상한
 if os.path.exists(ENV_FILE):
     dotenv.load_dotenv(ENV_FILE, override=True)
 
+PORT = int(os.environ.get("TUBEINSIGHT_PORT", "8989"))
+HOST = os.environ.get("TUBEINSIGHT_HOST", "127.0.0.1")
+
 # 브라우저에 내어줄 파일만 허용 (소스 코드·설정·분석 캐시는 서빙하지 않음)
 STATIC_FILES = {"/index.html", "/app.js", "/style.css", "/favicon.ico"}
 STATIC_PREFIXES = ("/vendor/", "/data/audio/", "/data/voices/", "/data/renders/", "/data/channels/")
-ALLOWED_HOSTS = ("localhost", "127.0.0.1", "[::1]")
+
+# 기본 허용 호스트 + 환경변수(ALLOWED_HOSTS) 추가 호스트
+_raw_allowed = os.environ.get("ALLOWED_HOSTS", "").split(",")
+ALLOWED_HOSTS = {"localhost", "127.0.0.1", "[::1]"} | {h.strip().lower() for h in _raw_allowed if h.strip()}
 
 # 단계 키 → 진행률(%) — 프론트 진행 표시에 사용
 STEP_PROGRESS = {
@@ -503,13 +508,29 @@ class TubeInsightHandler(SimpleHTTPRequestHandler):
         sys.stderr.write(f"[{self.log_date_time_string()}] {line}\n")
 
     def end_headers(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
         self.send_header("X-Content-Type-Options", "nosniff")
         super().end_headers()
 
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.end_headers()
+
     def _host_ok(self):
         host = (self.headers.get("Host") or "").split(":")[0].lower()
-        return host in ALLOWED_HOSTS
+        if not host:
+            return True
+        if host in ALLOWED_HOSTS or "*" in ALLOWED_HOSTS:
+            return True
+        # 터널링 및 Vercel 도메인 자동 허용
+        if any(host.endswith(sfx) for sfx in (
+            ".trycloudflare.com", ".ngrok-free.app", ".ngrok.io", ".loca.lt", ".vercel.app"
+        )):
+            return True
+        return False
 
     # ── GET ──
     def do_GET(self):
@@ -901,11 +922,16 @@ class TubeInsightHandler(SimpleHTTPRequestHandler):
             pass
 
 
+# Vercel Serverless Function 진입점 호환용 변수
+handler = TubeInsightHandler
+
+
 def run():
     os.makedirs(DATA_DIR, exist_ok=True)
-    httpd = ThreadingHTTPServer(("127.0.0.1", PORT), TubeInsightHandler)  # 내 컴퓨터에서만 접속 가능
+    httpd = ThreadingHTTPServer((HOST, PORT), TubeInsightHandler)
     httpd.daemon_threads = True
-    print(f"🚀 TubeInsight v{APP_VERSION} 실행 중: http://localhost:{PORT}")
+    display_host = "localhost" if HOST in ("127.0.0.1", "0.0.0.0") else HOST
+    print(f"🚀 TubeInsight v{APP_VERSION} 실행 중: http://{display_host}:{PORT}")
     print("   브라우저에서 위 주소를 열어주세요. 종료: Ctrl+C")
     try:
         httpd.serve_forever()

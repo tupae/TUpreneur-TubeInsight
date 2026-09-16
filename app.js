@@ -22,8 +22,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── 공용 유틸 ──────────────────────────────────────────────────────────
 
+// 백엔드 주소 관리 (로컬 호스트에서는 상대 경로, Vercel 등 외부 배포에서는 터널 주소)
+function getBackendUrl() {
+  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const custom = (localStorage.getItem('tubeinsight_backend_url') || '').trim();
+  if (custom) {
+    return custom.replace(/\/+$/, '');
+  }
+  return isLocal ? '' : '';
+}
+
+function toBackendUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:') || path.startsWith('data:')) {
+    return path;
+  }
+  const base = getBackendUrl();
+  const normalized = path.startsWith('/') ? path : '/' + path;
+  return base ? `${base}${normalized}` : normalized;
+}
+
 async function api(path, body) {
-  const res = await fetch(path, body === undefined ? {} : {
+  const url = toBackendUrl(path);
+  const res = await fetch(url, body === undefined ? {} : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   let data = {};
@@ -243,17 +264,112 @@ function setMode(mode) {
 
 function bindHeader() {
   document.querySelectorAll('.mode-btn').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  $('backendPill')?.addEventListener('click', openBackendModal);
   $('lmsPill').addEventListener('click', () => selectBackend('lmstudio'));
   $('ollamaPill').addEventListener('click', () => selectBackend('ollama'));
   $('btnEnv').addEventListener('click', openEnvModal);
   $('btnCloseEnv').addEventListener('click', () => $('envModal').classList.remove('open'));
   $('envModal').addEventListener('click', (e) => { if (e.target === $('envModal')) $('envModal').classList.remove('open'); });
+
+  // 백엔드 연결 설정 모달 이벤트 바인딩
+  $('btnCloseBackendModal')?.addEventListener('click', closeBackendModal);
+  $('btnCloseBackendModalBottom')?.addEventListener('click', closeBackendModal);
+  $('backendModal')?.addEventListener('click', (e) => { if (e.target === $('backendModal')) closeBackendModal(); });
+  $('btnSaveBackendUrl')?.addEventListener('click', handleSaveBackendUrl);
+  $('btnResetBackendUrl')?.addEventListener('click', handleResetBackendUrl);
+  $('btnCopyTunnelCmd')?.addEventListener('click', () => {
+    const code = $('tunnelCmdCode')?.textContent || 'npx cloudflared tunnel --url http://localhost:8989';
+    navigator.clipboard.writeText(code).then(() => showToast('터널 실행 명령어가 클립보드에 복사되었습니다!'));
+  });
+}
+
+function updateBackendStatusBadge(online) {
+  const pill = $('backendPill'), dot = $('backendDot'), label = $('backendLabel');
+  if (!pill || !dot || !label) return;
+  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const custom = (localStorage.getItem('tubeinsight_backend_url') || '').trim();
+
+  pill.className = 'pill ' + (online ? 'online active' : 'chosen-offline');
+  dot.className = 'dot ' + (online ? 'dot-success' : 'dot-danger');
+
+  if (custom) {
+    let hostName = '';
+    try { hostName = new URL(custom).hostname; } catch (e) { hostName = custom.slice(0, 16); }
+    label.textContent = online ? `터널 · ${hostName}` : '터널 오프라인';
+    pill.title = online ? `백엔드 연결됨: ${custom}` : `백엔드 오프라인 (${custom})`;
+  } else if (isLocal) {
+    label.textContent = online ? '로컬 서버' : '로컬 오프라인';
+    pill.title = online ? '로컬 서버 (http://localhost:8989) 정상 연결' : '로컬 서버 실행 필요 (python3 server.py)';
+  } else {
+    label.textContent = '백엔드 연결 필요';
+    pill.title = 'Vercel 배포 환경입니다. 클릭하여 로컬 백엔드 터널 주소를 연결하세요.';
+  }
+}
+
+function openBackendModal() {
+  const modal = $('backendModal');
+  if (!modal) return;
+  const cur = (localStorage.getItem('tubeinsight_backend_url') || '').trim();
+  $('backendUrlInput').value = cur;
+  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  $('backendConnectionStatusMsg').textContent = cur 
+    ? `현재 설정된 주소: ${cur}` 
+    : (isLocal ? '로컬 환경 (설정 비워둘 시 현재 호스트 사용)' : '외부 배포 환경: 터널 주소를 입력하세요');
+  modal.classList.add('open');
+  icons();
+}
+
+function closeBackendModal() {
+  $('backendModal')?.classList.remove('open');
+}
+
+async function handleSaveBackendUrl() {
+  const input = $('backendUrlInput');
+  const btn = $('btnSaveBackendUrl');
+  let url = (input.value || '').trim();
+  if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
+  }
+  url = url.replace(/\/+$/, '');
+  setBusy(btn, true, '연결 확인 중…');
+  try {
+    const testUrl = url ? `${url}/api/status` : '/api/status';
+    const res = await fetch(testUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.version) throw new Error('올바른 TubeInsight 백엔드가 아닙니다.');
+
+    if (url) {
+      localStorage.setItem('tubeinsight_backend_url', url);
+    } else {
+      localStorage.removeItem('tubeinsight_backend_url');
+    }
+    updateBackendStatusBadge(true);
+    showToast(`백엔드(v${data.version})에 성공적으로 연결되었습니다!`);
+    closeBackendModal();
+    refreshStatus();
+  } catch (err) {
+    showToast(`연결 실패: ${err.message}. 주소 및 로컬 서버/터널 실행 여부를 확인하세요.`, true);
+    $('backendConnectionStatusMsg').textContent = `❌ 연결 실패 (${err.message})`;
+  } finally {
+    setBusy(btn, false, '연결 테스트 & 저장');
+  }
+}
+
+function handleResetBackendUrl() {
+  localStorage.removeItem('tubeinsight_backend_url');
+  $('backendUrlInput').value = '';
+  showToast('백엔드 주소를 기본값(현재 호스트)으로 초기화했습니다.');
+  updateBackendStatusBadge(false);
+  closeBackendModal();
+  refreshStatus();
 }
 
 async function refreshStatus() {
   const pills = { lmstudio: { pill: $('lmsPill'), label: $('lmsLabel'), name: 'LM Studio' }, ollama: { pill: $('ollamaPill'), label: $('ollamaLabel'), name: 'Ollama' } };
   try {
     const st = await api('/api/status');
+    updateBackendStatusBadge(true);
     state.status = st; state.llmPreference = st.llm.preference || 'auto';
     $('appVersion').textContent = `v${st.version}`;
     for (const key of ['lmstudio', 'ollama']) {
@@ -270,6 +386,7 @@ async function refreshStatus() {
         : b.model ? `${p.name} 실행 중 (대기) · 클릭하면 이 백엔드를 사용합니다` : `${p.name} 실행 중 — 모델 설치 필요 (ollama pull gemma3)`;
     }
   } catch (e) {
+    updateBackendStatusBadge(false);
     for (const key of ['lmstudio', 'ollama']) { pills[key].pill.className = 'pill'; pills[key].label.textContent = pills[key].name; pills[key].pill.title = '서버 연결 대기 중'; }
   }
 }
@@ -1276,7 +1393,7 @@ function renderPlan(plan) {
           ${sc.proofread ? `<span class="badge badge-ok" title="원문: ${escapeHtml(sc.original_subtitle || '')}">교정됨</span>` : ''}${sc.edited ? '<span class="badge">직접 수정</span>' : ''}
         </div>
         ${sc.direction ? `<p class="text-[11px] text-neutral-500">연출: ${escapeHtml(sc.direction)}</p>` : ''}
-        ${a.audio_url ? `<audio controls src="${a.audio_url}" class="w-full h-7 mt-1" preload="none"></audio>${a.fallback ? `<p class="text-[11px] text-amber-700 mt-0.5">⚠ ${escapeHtml(a.fallback)}</p>` : ''}` : `<p class="text-[11px] text-neutral-400">${a.error ? '오디오: ' + escapeHtml(a.error) : '나레이션 오디오 없음'}</p>`}
+        ${a.audio_url ? `<audio controls src="${toBackendUrl(a.audio_url)}" class="w-full h-7 mt-1" preload="none"></audio>${a.fallback ? `<p class="text-[11px] text-amber-700 mt-0.5">⚠ ${escapeHtml(a.fallback)}</p>` : ''}` : `<p class="text-[11px] text-neutral-400">${a.error ? '오디오: ' + escapeHtml(a.error) : '나레이션 오디오 없음'}</p>`}
       </div>
       <div class="subtle-box p-3 space-y-2">
         <div class="flex justify-between items-center">
@@ -1337,7 +1454,7 @@ function toggleFullAudio() {
   const url = state.plan?.audio_data?.full_audio_url;
   if (!url) { showToast('전체 나레이션 오디오가 없습니다.', true); return; }
   if (state.fullAudio) { stopFullAudio(); return; }
-  state.fullAudio = new Audio(url); state.fullAudio.play();
+  state.fullAudio = new Audio(toBackendUrl(url)); state.fullAudio.play();
   $('btnPlayFullAudio').innerHTML = '<i data-lucide="square" class="w-3.5 h-3.5"></i> 정지'; icons();
   state.fullAudio.onended = stopFullAudio;
 }
@@ -1684,11 +1801,11 @@ function renderMediaGrid() {
           : `${topicSlug}_씬${String(slot).padStart(2, '0')}${ext}`;
 
         actionsHtml = `<div class="media-actions">
-          <a href="${m.url}" download="${escapeHtml(downloadName)}" class="media-btn media-download" title="${m.type === 'video' ? '영상 클립 다운로드' : '이미지 다운로드'} (${escapeHtml(downloadName)})" onclick="event.stopPropagation()">
+          <a href="${toBackendUrl(m.url)}" download="${escapeHtml(downloadName)}" class="media-btn media-download" title="${m.type === 'video' ? '영상 클립 다운로드' : '이미지 다운로드'} (${escapeHtml(downloadName)})" onclick="event.stopPropagation()">
             <i data-lucide="download" class="w-3.5 h-3.5"></i>
           </a>
           ${m.type === 'video' && m.image_url ? `
-          <a href="${m.image_url}" download="${escapeHtml(topicSlug + '_씬' + String(slot).padStart(2, '0') + '_첫프레임.png')}" class="media-btn media-download" title="첫 프레임 정지 이미지 다운로드" onclick="event.stopPropagation()">
+          <a href="${toBackendUrl(m.image_url)}" download="${escapeHtml(topicSlug + '_씬' + String(slot).padStart(2, '0') + '_첫프레임.png')}" class="media-btn media-download" title="첫 프레임 정지 이미지 다운로드" onclick="event.stopPropagation()">
             <i data-lucide="image" class="w-3.5 h-3.5"></i>
           </a>` : ''}
           <button type="button" class="media-btn media-btn-danger media-remove" data-remove="${slot}" title="${m && m.type === 'video' ? '영상 제거 (첫 프레임 이미지로 되돌아감)' : '제거'}" onclick="event.stopPropagation()">
@@ -1703,8 +1820,8 @@ function renderMediaGrid() {
         ${
           m
             ? m.type === 'video'
-              ? `<video src="${m.url}${m.trim_start ? '#t=' + (Number(m.trim_start) + 0.5) : ''}" muted preload="metadata" playsinline></video>`
-              : `<img src="${m.url}?t=${Date.now()}" alt="">`
+              ? `<video src="${toBackendUrl(m.url)}${m.trim_start ? '#t=' + (Number(m.trim_start) + 0.5) : ''}" muted preload="metadata" playsinline></video>`
+              : `<img src="${toBackendUrl(m.url)}?t=${Date.now()}" alt="">`
             : `<i data-lucide="${slot === 'thumbnail' ? 'image' : 'image-plus'}" class="w-6 h-6"></i><span>${
                 slot === 'thumbnail' ? '썸네일 이미지' : '이미지 / AI 영상'
               }</span>`
@@ -2165,8 +2282,8 @@ function renderRenderResult() {
   }
   box.style.display = 'block';
   const v = $('renderVideo');
-  v.src = `${r.video_url}?t=${Date.now()}`;
-  $('btnDownloadVideo').href = r.video_url;
+  v.src = `${toBackendUrl(r.video_url)}?t=${Date.now()}`;
+  $('btnDownloadVideo').href = toBackendUrl(r.video_url);
   $('btnDownloadVideo').download = `${state.producePlan?.topic || 'video'}.mp4`;
   $('renderInfo').innerHTML = [
     `<span class="badge badge-ok">완성</span>`,
@@ -4206,10 +4323,10 @@ function renderChannelOutput(data) {
   const avatarEmpty = $('channelAvatarEmpty');
   const dlAvatar = $('btnDownloadAvatar');
   if (data.avatar_image) {
-    avatarImg.src = data.avatar_image + `?t=${Date.now()}`;
+    avatarImg.src = toBackendUrl(data.avatar_image) + `?t=${Date.now()}`;
     avatarImg.style.display = 'block';
     avatarEmpty.style.display = 'none';
-    dlAvatar.href = data.avatar_image;
+    dlAvatar.href = toBackendUrl(data.avatar_image);
     dlAvatar.style.display = 'inline-flex';
   } else {
     avatarImg.style.display = 'none';
@@ -4221,10 +4338,10 @@ function renderChannelOutput(data) {
   const bannerEmpty = $('channelBannerEmpty');
   const dlBanner = $('btnDownloadBanner');
   if (data.banner_image) {
-    bannerImg.src = data.banner_image + `?t=${Date.now()}`;
+    bannerImg.src = toBackendUrl(data.banner_image) + `?t=${Date.now()}`;
     bannerImg.style.display = 'block';
     bannerEmpty.style.display = 'none';
-    dlBanner.href = data.banner_image;
+    dlBanner.href = toBackendUrl(data.banner_image);
     dlBanner.style.display = 'inline-flex';
   } else {
     bannerImg.style.display = 'none';

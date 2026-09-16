@@ -130,9 +130,52 @@ python server.py
 
 ---
 
+## 🚀 Vercel 배포 및 원격 접속 가이드
+
+TubeInsight는 Vercel의 초고속 글로벌 Edge CDN과 개인 컴퓨터의 고성능 자원(GPU · 로컬 AI · ffmpeg)을 유기적으로 결합하는 **하이브리드 배포 아키텍처**를 지원합니다.
+
+### 1. 배포 아키텍처 및 런타임 정보
+* **프론트엔드 (Vercel)**: `index.html`, `app.js`, `style.css` 등 정적 UI가 Vercel의 글로벌 CDN에 배포되어 어디서나 모바일/태블릿/PC로 접속할 수 있습니다.
+* **백엔드 엔진 (로컬 PC)**: 영상 합성(`ffmpeg`), 자막 추출(`yt-dlp`), 로컬 AI(`LM Studio`/`Ollama`), 영상 파일 저장은 내 컴퓨터에서 안전하게 처리됩니다.
+* **통신 연동**: 무료 **Cloudflare Tunnel**을 통해 Vercel UI와 로컬 백엔드가 안전한 HTTPS로 실시간 암호화 통신합니다.
+
+---
+
+### 2. Vercel 대시보드를 통한 배포 단계 (원클릭 Git 연동)
+
+1. [Vercel 공식 홈페이지](https://vercel.com)에 로그인합니다.
+2. **Add New...** 버튼을 클릭하고 **Project**를 선택합니다.
+3. 본인의 GitHub `TUpreneur-TubeInsight` 저장소를 찾아 **Import** 버튼을 클릭합니다.
+4. **Configure Project** 화면에서:
+   - **Framework Preset**: `Other` (정적 사이트로 자동 감지)
+   - **Root Directory**: `./` (기본값)
+   - `.vercelignore`가 설정되어 있으므로 파이썬 빌드 오류 없이 순수 정적 웹으로 즉시 빌드됩니다.
+5. **Deploy** 버튼을 클릭합니다. 배포 완료 후 제공되는 `https://your-project.vercel.app` 주소로 접속합니다.
+
+---
+
+### 3. Vercel 웹 화면과 내 컴퓨터 연결 (무료 10초 완성)
+
+1. **로컬 백엔드 실행**:
+   내 컴퓨터에서 `python server.py` (또는 `run.command` 더블클릭)를 실행합니다.
+2. **무료 Cloudflare 터널 열기**:
+   - `tunnel.command` 더블클릭 (macOS)  
+   - 또는 터미널에서 다음 명령어 1줄 실행:
+     ```bash
+     npx cloudflared tunnel --url http://localhost:8989
+     ```
+   - 터미널 출력에 나타나는 `https://xxx.trycloudflare.com` 형태의 주소를 복사합니다.
+3. **Vercel 웹 UI에 등록**:
+   - Vercel 주소(`https://your-project.vercel.app`)에 접속합니다.
+   - 상단 헤더의 **[🔗 로컬 서버]** 또는 **[백엔드 연결 필요]** 버튼을 클릭합니다.
+   - 복사한 터널 주소를 붙여넣고 **[연결 테스트 & 저장]**을 누르면 끝! (초록색 🟢 연결됨으로 즉시 활성화)
+
+---
+
 ## 🔒 보안 및 개인정보 보호 안내
 * `.env` 및 OAuth 토큰(`data/youtube/client_secret.json`, `token.json` 등)은 `.gitignore`에 의해 깃허브 원격 저장소에 절대 커밋되지 않도록 보호됩니다.
 * 로컬 AI 모델(LM Studio / Ollama)을 사용하므로 영상 기획 대본과 채널 데이터가 외부 서버로 유출되지 않고 로컬 PC에서 안전하게 처리됩니다.
+* Vercel 배포 시에도 영상 데이터와 로컬 AI 작업은 내 컴퓨터 내부에서만 처리되므로 완벽한 개인정보 보안을 유지합니다.
 
 ---
 

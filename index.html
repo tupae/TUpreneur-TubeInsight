@@ -40,6 +40,7 @@
 
       <!-- 2. 상태 알약 (모바일 1행 우측, md이상 3번째) -->
       <div class="flex items-center gap-1 sm:gap-1.5 order-2 md:order-3">
+        <button id="backendPill" class="pill" title="백엔드 API 서버 연결 설정"><span class="dot dot-success" id="backendDot"></span><span id="backendLabel">로컬 서버</span></button>
         <button id="lmsPill" class="pill" title="LM Studio 상태 확인 중"><span class="dot" id="lmsDot"></span><span id="lmsLabel">LM Studio</span></button>
         <button id="ollamaPill" class="pill" title="Ollama 상태 확인 중"><span class="dot" id="ollamaDot"></span><span id="ollamaLabel">Ollama</span></button>
         <button id="btnEnv" class="btn btn-ghost !px-2 sm:!px-2.5 !py-1" title="환경 진단"><i data-lucide="stethoscope" class="w-3.5 h-3.5"></i></button>
@@ -1295,6 +1296,57 @@
       </div>
       <p class="text-[11px] text-neutral-500 mb-2">항목을 클릭하면 결과를 다시 불러옵니다.</p>
       <div class="space-y-1.5 max-h-[420px] overflow-y-auto" id="marketingHistoryList"></div>
+    </div>
+  </div>
+
+  <!-- 백엔드 서버 연결 설정 모달 (Vercel 배포 시 로컬 터널 주소 연결) -->
+  <div class="modal" id="backendModal">
+    <div class="modal-panel !max-w-md shadow-2xl">
+      <div class="flex justify-between items-center mb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded bg-black text-white flex items-center justify-center shrink-0">
+            <i data-lucide="link-2" class="w-4 h-4"></i>
+          </div>
+          <h4 class="font-display font-bold text-black text-base">백엔드 API 서버 연결</h4>
+        </div>
+        <button id="btnCloseBackendModal" class="text-neutral-400 hover:text-black p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+
+      <div class="space-y-3.5 text-xs text-neutral-600">
+        <p class="leading-relaxed">
+          Vercel 등 외부 웹 주소에서 접속할 때, 내 컴퓨터에서 실행 중인 <strong>TubeInsight 백엔드(AI·영상 제작 엔진)</strong>와 통신하기 위한 주소를 설정합니다.
+        </p>
+
+        <div>
+          <label class="block text-neutral-800 font-semibold mb-1" for="backendUrlInput">백엔드 서버 URL</label>
+          <div class="flex gap-1.5">
+            <input id="backendUrlInput" type="url" placeholder="예: https://xxx.trycloudflare.com 또는 http://localhost:8989" class="input flex-1 !text-xs font-mono" />
+            <button id="btnSaveBackendUrl" type="button" class="btn btn-primary !py-1.5 px-3 whitespace-nowrap text-xs font-semibold">연결 테스트 & 저장</button>
+          </div>
+          <p class="text-[11px] text-neutral-400 mt-1" id="backendConnectionStatusMsg">기본값: 로컬 주소(비어 있으면 현재 도메인 사용)</p>
+        </div>
+
+        <div class="p-3 bg-neutral-50 rounded-lg border border-neutral-200 space-y-2">
+          <div class="flex items-center justify-between font-semibold text-neutral-800">
+            <span class="flex items-center gap-1.5"><i data-lucide="terminal" class="w-3.5 h-3.5"></i> 무료 터널 10초 생성 방법</span>
+            <button type="button" id="btnCopyTunnelCmd" class="text-[11px] text-neutral-600 hover:text-black underline">명령어 복사</button>
+          </div>
+          <p class="text-[11px] text-neutral-500 leading-normal">
+            내 컴퓨터 터미널에서 아래 명령을 실행하면 무료 HTTPS 터널 주소가 생성됩니다:
+          </p>
+          <div class="bg-neutral-900 text-neutral-200 p-2 rounded text-[11px] font-mono select-all flex items-center justify-between overflow-x-auto">
+            <code id="tunnelCmdCode">npx cloudflared tunnel --url http://localhost:8989</code>
+          </div>
+          <p class="text-[10px] text-neutral-400">
+            또는 프로젝트 폴더의 <code>tunnel.command</code> 파일을 더블클릭하세요.
+          </p>
+        </div>
+
+        <div class="flex justify-between items-center pt-2 border-t border-neutral-100">
+          <button type="button" id="btnResetBackendUrl" class="text-[11px] text-red-600 hover:underline">로컬 기본값으로 초기화</button>
+          <button type="button" id="btnCloseBackendModalBottom" class="btn btn-ghost !py-1 px-3 text-xs">닫기</button>
+        </div>
+      </div>
     </div>
   </div>
 

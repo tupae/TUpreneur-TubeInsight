@@ -86,6 +86,8 @@ body {
 .pill.nomodel .dot { background: #F59E0B; }
 .pill.chosen-offline { border-color: #F87171; color: var(--bad); }
 .pill.chosen-offline .dot { background: var(--bad); }
+.dot-success { background: var(--ok) !important; }
+.dot-danger { background: var(--bad) !important; }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 
 /* ── 작은 배지 ── */

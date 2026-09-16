@@ -1,0 +1,21 @@
+# Python Backend & Scripts (Vercel 정적 웹사이트 배포를 위해 제외)
+*.py
+requirements.txt
+.venv/
+__pycache__/
+*.pyc
+
+# Local Data & Media Storage
+data/
+audio/
+output/
+
+# OS & Environment
+.env
+.env*
+.DS_Store
+
+# Local Runner Scripts
+run.command
+run.bat
+tunnel.command
